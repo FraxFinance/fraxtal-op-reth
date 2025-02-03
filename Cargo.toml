@@ -1,0 +1,38 @@
+[package]
+name = "fraxtal-op-reth"
+version = "1.1.5-frax-1.0.0"
+edition = "2021"
+
+[features]
+default = ["optimism", "jemalloc", "asm-keccak"]
+jemalloc = ["reth-cli-util/jemalloc", "reth-optimism-cli/jemalloc"]
+asm-keccak = ["reth-optimism-cli/asm-keccak", "reth-optimism-node/asm-keccak"]
+optimism = [
+    "reth-optimism-cli/optimism",
+    "reth-optimism-node/optimism",
+    "reth-optimism-consensus/optimism",
+    "reth-optimism-evm/optimism",
+    "reth-optimism-payload-builder/optimism",
+    "reth-optimism-rpc/optimism",
+    "reth-optimism-primitives/optimism",
+    "reth-provider/optimism",
+]
+
+[dependencies]
+reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-cli-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+
+op-alloy-consensus = "=0.10.0"
+
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1.0"
