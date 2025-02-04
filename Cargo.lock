@@ -2438,9 +2438,15 @@ dependencies = [
 name = "fraxtal-op-reth"
 version = "1.1.5-frax-1.0.0"
 dependencies = [
+ "alloy-chains",
+ "alloy-primitives",
  "clap",
+ "eyre",
  "op-alloy-consensus 0.10.0",
+ "reth-chainspec",
+ "reth-cli",
  "reth-cli-util",
+ "reth-ethereum-forks",
  "reth-node-builder",
  "reth-optimism-chainspec",
  "reth-optimism-cli",
@@ -2452,6 +2458,7 @@ dependencies = [
  "reth-optimism-primitives",
  "reth-optimism-rpc",
  "reth-provider",
+ "serde_json",
  "tracing",
 ]
 

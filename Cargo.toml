@@ -19,6 +19,9 @@ optimism = [
 ]
 
 [dependencies]
+reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-ethereum-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-cli-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
@@ -32,7 +35,16 @@ reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", t
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 
+alloy-chains = { version = "0.1.32", default-features = false }
+alloy-primitives = { version = "0.8.15", default-features = false, features = [
+    "map-foldhash",
+] }
+
 op-alloy-consensus = "=0.10.0"
 
+serde_json = { version = "1.0.94", default-features = false, features = [
+    "alloc",
+] }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = "0.1.0"
+eyre = "0.6.12"
