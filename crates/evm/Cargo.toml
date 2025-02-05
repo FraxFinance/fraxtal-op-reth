@@ -1,0 +1,68 @@
+[package]
+name = "fraxtal-evm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Reth
+reth-evm.workspace = true
+reth-revm.workspace = true
+reth-consensus.workspace = true
+reth-chainspec.workspace = true
+reth-optimism-evm.workspace = true
+reth-optimism-chainspec.workspace = true
+reth-optimism-consensus.workspace = true
+reth-optimism-forks.workspace = true
+reth-optimism-primitives.workspace = true
+reth-primitives.workspace = true
+reth-primitives-traits.workspace = true
+
+# revm
+revm.workspace = true
+revm-primitives.workspace = true
+
+# alloy
+alloy-consensus.workspace = true
+alloy-eips.workspace = true
+
+# Optimism
+op-alloy-consensus.workspace = true
+
+# misc
+tracing.workspace = true
+thiserror.workspace = true
+
+[features]
+default = ["std"]
+std = [
+    "reth-consensus/std",
+    "reth-primitives/std",
+    "reth-revm/std",
+    "alloy-consensus/std",
+    "alloy-eips/std",
+    # "alloy-genesis/std",
+    # "alloy-primitives/std",
+    "revm-primitives/std",
+    # "reth-primitives-traits/std",
+    "revm/std",
+    "reth-optimism-primitives/std",
+    # "reth-ethereum-forks/std",
+    # "derive_more/std",
+    "reth-optimism-forks/std",
+    "thiserror/std",
+    "op-alloy-consensus/std",
+    "reth-chainspec/std",
+    # "reth-optimism-consensus/std",
+    # "reth-consensus-common/std",
+]
+optimism = [
+    # "reth-execution-types/optimism",
+    "reth-optimism-consensus/optimism",
+    "revm/optimism",
+    "revm-primitives/optimism",
+    "reth-optimism-primitives/optimism",
+]

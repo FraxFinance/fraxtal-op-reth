@@ -1,0 +1,58 @@
+[package]
+name = "op-fraxtal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Fraxtal is a fork of op-reth"
+
+[lints]
+workspace = true
+
+[dependencies]
+fraxtal-chainspec.workspace = true
+fraxtal-node.workspace = true
+
+reth-cli.workspace = true
+reth-chainspec.workspace = true
+reth-ethereum-forks.workspace = true
+reth-node-builder.workspace = true
+reth-cli-util.workspace = true
+reth-optimism-cli.workspace = true
+reth-provider.workspace = true
+reth-optimism-rpc.workspace = true
+reth-optimism-node.workspace = true
+reth-optimism-chainspec.workspace = true
+reth-optimism-consensus.workspace = true
+reth-optimism-evm.workspace = true
+reth-optimism-payload-builder.workspace = true
+reth-optimism-primitives.workspace = true
+reth-optimism-forks.workspace = true
+
+alloy-chains.workspace = true
+alloy-primitives.workspace = true
+
+op-alloy-consensus.workspace = true
+
+serde_json.workspace = true
+clap.workspace = true
+tracing.workspace = true
+eyre.workspace = true
+
+[[bin]]
+name = "op-fraxtal"
+path = "src/main.rs"
+
+[features]
+default = ["optimism", "jemalloc", "asm-keccak"]
+jemalloc = ["reth-cli-util/jemalloc", "reth-optimism-cli/jemalloc"]
+asm-keccak = ["reth-optimism-cli/asm-keccak", "reth-optimism-node/asm-keccak"]
+optimism = [
+    "reth-optimism-cli/optimism",
+    "reth-optimism-node/optimism",
+    "reth-optimism-consensus/optimism",
+    "reth-optimism-evm/optimism",
+    "reth-optimism-payload-builder/optimism",
+    "reth-optimism-rpc/optimism",
+    "reth-optimism-primitives/optimism",
+    "reth-provider/optimism",
+]

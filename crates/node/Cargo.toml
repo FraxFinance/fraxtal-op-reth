@@ -1,0 +1,44 @@
+
+[package]
+name = "fraxtal-node"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+fraxtal-evm.workspace = true
+fraxtal-payload-builder.workspace = true
+
+reth-basic-payload-builder.workspace = true
+reth-evm.workspace = true
+reth-node-api.workspace = true
+reth-optimism-node.workspace = true
+reth-optimism-payload-builder.workspace = true
+reth-optimism-chainspec.workspace = true
+reth-optimism-primitives.workspace = true
+reth-payload-builder.workspace = true
+reth-provider.workspace = true
+reth-node-builder.workspace = true
+reth-transaction-pool.workspace = true
+reth-trie-db.workspace = true
+eyre.workspace = true
+
+[features]
+default=["optimism"]
+optimism = [
+    "fraxtal-evm/optimism",
+    "fraxtal-payload-builder/optimism",
+    "reth-optimism-node/optimism",
+    "reth-optimism-payload-builder/optimism",
+    "reth-optimism-primitives/optimism",
+]
+asm-keccak = [
+	# "reth-primitives/asm-keccak",
+	# "alloy-primitives/asm-keccak",
+	# "revm/asm-keccak",
+	"reth-optimism-node/asm-keccak",
+	# "reth-node-core/asm-keccak"
+]

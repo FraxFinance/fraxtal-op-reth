@@ -10,11 +10,11 @@ use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_forks::OpHardfork;
 
 /// The Base mainnet spec
-pub static FRAXTAL_MAINNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
+pub(crate) static FRAXTAL_MAINNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(|| {
     OpChainSpec {
         inner: ChainSpec {
             chain: Chain::fraxtal(),
-            genesis: serde_json::from_str(include_str!("../../res/genesis/mainnet.json"))
+            genesis: serde_json::from_str(include_str!("../res/genesis/mainnet.json"))
                 .expect("Can't deserialize Fraxtal genesis json"),
             genesis_hash: once_cell_set(b256!(
                 "521982bd54239dc71269eefb58601762cc15cfb2978e0becb46af7962ed6bfaa"

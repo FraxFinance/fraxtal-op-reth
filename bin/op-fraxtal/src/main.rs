@@ -2,7 +2,8 @@
 // The `optimism` feature must be enabled to use this crate.
 
 use clap::Parser;
-use fraxtal_op_reth::chainspec::FraxtalChainSpecParser;
+use fraxtal_chainspec::FraxtalChainSpecParser;
+use fraxtal_node::node::FraxtalNode;
 use reth_node_builder::{engine_tree_config::TreeConfig, EngineNodeLauncher, Node};
 use reth_optimism_cli::Cli;
 use reth_optimism_node::{args::RollupArgs, OpNode};
@@ -27,7 +28,7 @@ fn main() {
                 .with_persistence_threshold(rollup_args.persistence_threshold)
                 .with_memory_block_buffer_target(rollup_args.memory_block_buffer_target);
 
-            let op_node = OpNode::new(rollup_args.clone());
+            let op_node = FraxtalNode::new(rollup_args.clone());
             let handle = builder
                 .with_types_and_provider::<OpNode, BlockchainProvider2<_>>()
                 .with_components(op_node.components())
