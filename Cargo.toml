@@ -14,34 +14,34 @@ fraxtal-evm = { path = "crates/evm" }
 fraxtal-node = { path = "crates/node" }
 fraxtal-payload-builder = { path = "crates/payload" }
 
-reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-basic-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-chain-state = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-cli-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-ethereum-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-execution-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-cli-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-cli = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-consensus = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-node = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-optimism-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
-reth-optimism-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-optimism-rpc = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-payload-builder-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-payload-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-payload-util = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-provider = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
+reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.1.5" }
 
