@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_forks::OpHardfork;
-use revm::{db::State, DatabaseCommit};
+use revm::{db::State, Database, DatabaseCommit};
 use revm_primitives::{address, b256, Account, Address, Bytecode, EvmStorageSlot, B256, U256};
 use tracing::info;
 
@@ -147,12 +147,15 @@ where
 
     let mut new_implementation_code = current_contract_acc
         .code
+        .unwrap_or_else(|| {
+            db.code_by_hash(current_contract_acc.code_hash)
         .unwrap_or_default()
+        })
         .bytes_slice()
         .to_owned();
 
     for i in l1_bytecode_replacmenets {
-        new_implementation_code[*i..].copy_from_slice(l1_token_bytes);
+        new_implementation_code[*i..*i + l1_token_bytes.len()].copy_from_slice(l1_token_bytes);
     }
 
     let mut implementation_acc = db
