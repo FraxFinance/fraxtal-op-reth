@@ -1,6 +1,6 @@
 [workspace]
-members = ["bin/op-fraxtal", "crates/node", "crates/evm", "crates/payload"]
-default-members = ["bin/op-fraxtal"]
+members = ["bin/fraxtal-op-reth", "crates/node", "crates/evm", "crates/payload"]
+default-members = ["bin/fraxtal-op-reth"]
 resolver = "2"
 
 [workspace.package]
@@ -56,9 +56,9 @@ alloy-rpc-types-debug = { version = "0.9.2", default-features = false }
 alloy-rpc-types-engine = { version = "0.9.2", default-features = false }
 
 # op
-op-alloy-consensus = { version =  "0.9.0", default-features = false }
-op-alloy-rpc-types = { version = "0.9.0", default-features = false }
-op-alloy-rpc-types-engine = { version =  "0.9.0", default-features = false }
+op-alloy-consensus = { version =  "=0.9.0", default-features = false }
+op-alloy-rpc-types = { version = "=0.9.0", default-features = false }
+op-alloy-rpc-types-engine = { version =  "=0.9.0", default-features = false }
 
 # revm
 revm = { version = "19.4.0", default-features = false }
