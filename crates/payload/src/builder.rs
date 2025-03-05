@@ -34,7 +34,7 @@ use reth_optimism_primitives::{
 };
 use reth_payload_builder_primitives::PayloadBuilderError;
 use reth_payload_primitives::PayloadBuilderAttributes;
-use reth_payload_util::PayloadTransactions;
+use reth_payload_util::{NoopPayloadTransactions, PayloadTransactions};
 use reth_primitives::{
     transaction::SignedTransactionIntoRecoveredExt, BlockBody, NodePrimitives, SealedHeader,
 };

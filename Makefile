@@ -78,7 +78,7 @@ build-debug: ## Build the reth binary into `target/debug` directory.
 
 # Builds the reth binary natively.
 build-native-%:
-	cargo build --bin reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
+	cargo build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
 
 # The following commands use `cross` to build a cross-compile.
 #
