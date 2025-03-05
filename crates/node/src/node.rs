@@ -1,25 +1,22 @@
 use fraxtal_evm::execute::FraxtalExecutionStrategyFactory;
-use reth_basic_payload_builder::{BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig};
-use reth_evm::{execute::BasicBlockExecutorProvider, ConfigureEvm};
-use reth_node_api::{HeaderTy, TxTy};
+use reth_evm::{execute::BasicBlockExecutorProvider, ConfigureEvmFor};
+use reth_node_api::{PrimitivesTy, TxTy};
 use reth_node_builder::{
     components::{ComponentsBuilder, ExecutorBuilder, PayloadServiceBuilder},
     BuilderContext, FullNodeTypes, Node, NodeAdapter, NodeComponentsBuilder, NodeTypes,
-    NodeTypesWithEngine, PayloadBuilderConfig,
+    NodeTypesWithEngine,
 };
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_node::{
     args::RollupArgs,
     node::{OpAddOns, OpConsensusBuilder, OpNetworkBuilder, OpPoolBuilder, OpStorage},
-    OpEngineTypes, OpEvmConfig, OpNode,
+    BasicOpReceiptBuilder, OpEngineTypes, OpEvmConfig, OpNode,
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig},
 };
 use reth_optimism_primitives::OpPrimitives;
-use reth_payload_builder::{PayloadBuilderHandle, PayloadBuilderService};
-use reth_provider::CanonStateSubscriptions;
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use reth_trie_db::MerklePatriciaTrie;
 
@@ -133,15 +130,14 @@ where
     Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec, Primitives = OpPrimitives>>,
 {
     type EVM = OpEvmConfig;
-    type Executor = BasicBlockExecutorProvider<FraxtalExecutionStrategyFactory>;
+    type Executor = BasicBlockExecutorProvider<FraxtalExecutionStrategyFactory<OpPrimitives>>;
 
     async fn build_evm(
         self,
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
         let evm_config = OpEvmConfig::new(ctx.chain_spec());
-        let strategy_factory =
-            FraxtalExecutionStrategyFactory::new(ctx.chain_spec(), evm_config.clone());
+        let strategy_factory = FraxtalExecutionStrategyFactory::optimism(ctx.chain_spec());
         let executor = BasicBlockExecutorProvider::new(strategy_factory);
 
         Ok((evm_config, executor))
@@ -186,16 +182,10 @@ impl FraxtalPayloadBuilder {
     }
 }
 
-impl<Txs> FraxtalPayloadBuilder<Txs>
-where
-    Txs: OpPayloadTransactions,
-{
+impl<Txs> FraxtalPayloadBuilder<Txs> {
     /// Configures the type responsible for yielding the transactions that should be included in the
     /// payload.
-    pub fn with_transactions<T: OpPayloadTransactions>(
-        self,
-        best_transactions: T,
-    ) -> FraxtalPayloadBuilder<T> {
+    pub fn with_transactions<T>(self, best_transactions: T) -> FraxtalPayloadBuilder<T> {
         let Self {
             compute_pending_block,
             da_config,
@@ -208,13 +198,23 @@ where
         }
     }
 
-    /// A helper method to initialize [`PayloadBuilderService`] with the given EVM config.
-    pub fn spawn<Node, Evm, Pool>(
-        self,
+    /// A helper method to initialize [`reth_optimism_payload_builder::OpPayloadBuilder`] with the
+    /// given EVM config.
+    #[expect(clippy::type_complexity)]
+    pub fn build<Node, Evm, Pool>(
+        &self,
         evm_config: Evm,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-    ) -> eyre::Result<PayloadBuilderHandle<OpEngineTypes>>
+    ) -> eyre::Result<
+        fraxtal_payload_builder::builder::FraxtalPayloadBuilder<
+            Pool,
+            Node::Provider,
+            Evm,
+            PrimitivesTy<Node::Types>,
+            Txs,
+        >,
+    >
     where
         Node: FullNodeTypes<
             Types: NodeTypesWithEngine<
@@ -226,37 +226,21 @@ where
         Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
             + Unpin
             + 'static,
-        Evm: ConfigureEvm<Header = HeaderTy<Node::Types>, Transaction = TxTy<Node::Types>>,
+        Evm: ConfigureEvmFor<PrimitivesTy<Node::Types>>,
+        Txs: OpPayloadTransactions<Pool::Transaction>,
     {
         let payload_builder =
             fraxtal_payload_builder::builder::FraxtalPayloadBuilder::with_builder_config(
+                pool,
+                ctx.provider().clone(),
                 evm_config,
+                BasicOpReceiptBuilder::default(),
                 OpBuilderConfig {
-                    da_config: self.da_config,
+                    da_config: self.da_config.clone(),
                 },
             )
-            .with_transactions(self.best_transactions)
+            .with_transactions(self.best_transactions.clone())
             .set_compute_pending_block(self.compute_pending_block);
-        let conf = ctx.payload_builder_config();
-
-        let payload_job_config = BasicPayloadJobGeneratorConfig::default()
-            .interval(conf.interval())
-            .deadline(conf.deadline())
-            .max_payload_tasks(conf.max_payload_tasks());
-
-        let payload_generator = BasicPayloadJobGenerator::with_builder(
-            ctx.provider().clone(),
-            pool,
-            ctx.task_executor().clone(),
-            payload_job_config,
-            payload_builder,
-        );
-        let (payload_service, payload_builder) =
-            PayloadBuilderService::new(payload_generator, ctx.provider().canonical_state_stream());
-
-        ctx.task_executor()
-            .spawn_critical("payload builder service", Box::pin(payload_service));
-
         Ok(payload_builder)
     }
 }
@@ -273,13 +257,21 @@ where
     Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
         + Unpin
         + 'static,
-    Txs: OpPayloadTransactions,
+    Txs: OpPayloadTransactions<Pool::Transaction>,
 {
-    async fn spawn_payload_service(
-        self,
+    type PayloadBuilder = fraxtal_payload_builder::builder::FraxtalPayloadBuilder<
+        Pool,
+        Node::Provider,
+        OpEvmConfig,
+        PrimitivesTy<Node::Types>,
+        Txs,
+    >;
+
+    async fn build_payload_builder(
+        &self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-    ) -> eyre::Result<PayloadBuilderHandle<OpEngineTypes>> {
-        self.spawn(OpEvmConfig::new(ctx.chain_spec()), ctx, pool)
+    ) -> eyre::Result<Self::PayloadBuilder> {
+        self.build(OpEvmConfig::new(ctx.chain_spec()), ctx, pool)
     }
 }

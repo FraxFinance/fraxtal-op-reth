@@ -56,7 +56,6 @@ optimism = [
     "reth-optimism-payload-builder/optimism",
     "reth-optimism-rpc/optimism",
     "reth-optimism-primitives/optimism",
-    "reth-provider/optimism",
 ]
 
 min-error-logs = ["tracing/release_max_level_error"]

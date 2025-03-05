@@ -1,7 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use reth_optimism_chainspec::OpChainSpec;
-use reth_optimism_forks::OpHardfork;
+use reth_chainspec::EthChainSpec;
+use reth_optimism_forks::OpHardforks;
 use revm::{db::State, Database, DatabaseCommit};
 use revm_primitives::{address, b256, Account, Address, Bytecode, EvmStorageSlot, B256, U256};
 use tracing::info;
@@ -39,7 +39,7 @@ const DEVNET_SFRAX_L1_REPLACEMENTS_INDEXES: &[usize] = &[693, 1303];
 /// The Graanite hardfork issues an irregular state transition that upgrades the frax/sfrax
 /// contracts code to be upgreadable proxies.
 pub fn ensure_frxusd<DB>(
-    chain_spec: Arc<OpChainSpec>,
+    chain_spec: impl OpHardforks + EthChainSpec,
     timestamp: u64,
     db: &mut revm::State<DB>,
 ) -> Result<(), DB::Error>
@@ -49,8 +49,8 @@ where
     // If the granite hardfork is active at the current timestamp, and it was not active at the
     // previous block timestamp (heuristically, block time is not perfectly constant at 2s), and the
     // chain is an optimism chain, then we need to upgrade the frax/sfrax contracts.
-    if chain_spec.is_fork_active_at_timestamp(OpHardfork::Granite, timestamp)
-        && !chain_spec.is_fork_active_at_timestamp(OpHardfork::Granite, timestamp.saturating_sub(2))
+    if chain_spec.is_granite_active_at_timestamp(timestamp)
+        && !chain_spec.is_granite_active_at_timestamp(timestamp.saturating_sub(2))
     {
         info!(target: "evm", "Forcing frxusd upgrade on Granite transition");
 
@@ -149,7 +149,7 @@ where
         .code
         .unwrap_or_else(|| {
             db.code_by_hash(current_contract_acc.code_hash)
-        .unwrap_or_default()
+                .unwrap_or_default()
         })
         .bytes_slice()
         .to_owned();

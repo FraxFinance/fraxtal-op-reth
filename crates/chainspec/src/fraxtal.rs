@@ -8,6 +8,7 @@ use reth_chainspec::{
     once_cell_set, BaseFeeParams, BaseFeeParamsKind, ChainHardforks, ChainSpec, ForkCondition,
 };
 use reth_ethereum_forks::EthereumHardfork;
+use reth_ethereum_forks::Hardfork;
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_forks::OpHardfork;
 
