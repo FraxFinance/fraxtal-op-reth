@@ -10,13 +10,15 @@ workspace = true
 
 [dependencies]
 fraxtal-evm.workspace = true
-fraxtal-payload-builder.workspace = true
 
 reth-basic-payload-builder.workspace = true
 reth-evm.workspace = true
 reth-node-api.workspace = true
+reth-optimism-evm.workspace = true
+reth-optimism-forks.workspace = true
 reth-optimism-node.workspace = true
 reth-optimism-payload-builder.workspace = true
+reth-optimism-consensus.workspace = true
 reth-optimism-chainspec.workspace = true
 reth-optimism-primitives.workspace = true
 reth-payload-builder.workspace = true
@@ -24,17 +26,14 @@ reth-provider.workspace = true
 reth-node-builder.workspace = true
 reth-transaction-pool.workspace = true
 reth-trie-db.workspace = true
+revm.workspace = true
 eyre.workspace = true
+alloy-rpc-types-eth.workspace = true
+op-alloy-consensus.workspace = true
 
 [features]
 default=["optimism"]
-optimism = [
-    "fraxtal-evm/optimism",
-    "fraxtal-payload-builder/optimism",
-    "reth-optimism-node/optimism",
-    "reth-optimism-payload-builder/optimism",
-    "reth-optimism-primitives/optimism",
-]
+optimism = []
 asm-keccak = [
 	# "reth-primitives/asm-keccak",
 	# "alloy-primitives/asm-keccak",

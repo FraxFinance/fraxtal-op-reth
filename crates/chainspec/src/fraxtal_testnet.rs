@@ -3,10 +3,8 @@
 use std::sync::{Arc, LazyLock};
 
 use alloy_chains::Chain;
-use alloy_primitives::{b256, U256};
-use reth_chainspec::{
-    once_cell_set, BaseFeeParams, BaseFeeParamsKind, ChainHardforks, ChainSpec, ForkCondition,
-};
+use alloy_primitives::U256;
+use reth_chainspec::{BaseFeeParams, BaseFeeParamsKind, ChainHardforks, ChainSpec, ForkCondition};
 use reth_ethereum_forks::EthereumHardfork;
 use reth_ethereum_forks::Hardfork;
 use reth_optimism_chainspec::OpChainSpec;
@@ -19,9 +17,6 @@ pub(crate) static FRAXTAL_TESTNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(||
             chain: Chain::fraxtal_testnet(),
             genesis: serde_json::from_str(include_str!("../res/genesis/testnet.json"))
                 .expect("Can't deserialize Fraxtal testnet genesis json"),
-            genesis_hash: once_cell_set(b256!(
-                "910f5c4084b63fd860d0c2f9a04615115a5a991254700b39ba072290dbd77489"
-            )),
             paris_block_and_final_difficulty: Some((0, U256::from(0))),
             hardforks: ChainHardforks::new(vec![
                 (EthereumHardfork::Frontier.boxed(), ForkCondition::Block(0)),

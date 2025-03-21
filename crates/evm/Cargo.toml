@@ -8,6 +8,8 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+fraxtal-op-evm.workspace = true
+
 # Reth
 reth-evm.workspace = true
 reth-revm.workspace = true
@@ -24,6 +26,7 @@ reth-primitives-traits.workspace = true
 # revm
 revm.workspace = true
 revm-primitives.workspace = true
+op-revm.workspace = true
 
 # alloy
 alloy-consensus.workspace = true
@@ -31,6 +34,8 @@ alloy-eips.workspace = true
 
 # Optimism
 op-alloy-consensus.workspace = true
+alloy-op-evm.workspace = true
+alloy-evm.workspace = true
 
 # misc
 tracing.workspace = true
@@ -44,25 +49,12 @@ std = [
     "reth-revm/std",
     "alloy-consensus/std",
     "alloy-eips/std",
-    # "alloy-genesis/std",
-    # "alloy-primitives/std",
     "revm-primitives/std",
-    # "reth-primitives-traits/std",
     "revm/std",
     "reth-optimism-primitives/std",
-    # "reth-ethereum-forks/std",
-    # "derive_more/std",
     "reth-optimism-forks/std",
     "thiserror/std",
     "op-alloy-consensus/std",
     "reth-chainspec/std",
-    # "reth-optimism-consensus/std",
-    # "reth-consensus-common/std",
 ]
-optimism = [
-    # "reth-execution-types/optimism",
-    "reth-optimism-consensus/optimism",
-    "revm/optimism",
-    "revm-primitives/optimism",
-    "reth-optimism-primitives/optimism",
-]
+optimism = []

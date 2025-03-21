@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 
+use alloy_op_hardforks::OpHardforks;
+use alloy_primitives::{address, b256, Address, B256, U256};
 use reth_chainspec::EthChainSpec;
-use reth_optimism_forks::OpHardforks;
-use revm::{db::State, Database, DatabaseCommit};
-use revm_primitives::{address, b256, Account, Address, Bytecode, EvmStorageSlot, B256, U256};
+use revm::{
+    database::State,
+    state::{Account, Bytecode, EvmStorageSlot},
+    Database, DatabaseCommit,
+};
 use tracing::info;
 
 const FRAX_ADDR: Address = address!("Fc00000000000000000000000000000000000001");
@@ -38,10 +42,10 @@ const DEVNET_SFRAX_L1_REPLACEMENTS_INDEXES: &[usize] = &[693, 1303];
 
 /// The Graanite hardfork issues an irregular state transition that upgrades the frax/sfrax
 /// contracts code to be upgreadable proxies.
-pub fn ensure_frxusd<DB>(
+pub(super) fn migrate_frxusd<DB>(
     chain_spec: impl OpHardforks + EthChainSpec,
     timestamp: u64,
-    db: &mut revm::State<DB>,
+    db: &mut State<DB>,
 ) -> Result<(), DB::Error>
 where
     DB: revm::Database,
