@@ -20,6 +20,7 @@ use alloy_op_evm::{
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use canyon::ensure_create2_deployer;
 use granite::migrate_frxusd;
+use holocene::migrate_frax_holocene;
 use op_alloy_consensus::OpDepositReceipt;
 use op_revm::transaction::deposit::DEPOSIT_TRANSACTION_TYPE;
 use reth_chainspec::EthChainSpec;
@@ -29,6 +30,7 @@ use crate::FraxtalEvmFactory;
 
 mod canyon;
 mod granite;
+mod holocene;
 
 /// Block executor for Optimism.
 #[derive(Debug)]
@@ -105,6 +107,10 @@ where
 
         // Ensure that during the granite hard fork we migrate frax to frxUSD and sfrax to sfrxUSD
         migrate_frxusd(&self.spec, self.evm.block().timestamp, self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?;
+
+        // Ensure that during the holocene hard fork we run the frax holocene migration
+        migrate_frax_holocene(&self.spec, self.evm.block().timestamp, self.evm.db_mut())
             .map_err(BlockExecutionError::other)?;
 
         Ok(())
