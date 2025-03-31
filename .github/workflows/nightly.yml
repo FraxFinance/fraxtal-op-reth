@@ -1,7 +1,7 @@
 # Taken form upstream reth
 # https://github.com/paradigmxyz/reth/blob/3212af2d85a54eb207661361ac9fe1d7de4b5b8e/.github/workflows/docker.yml
 
-name: release
+name: nightly
 
 on:
   push:
