@@ -15,8 +15,7 @@ pub struct FraxtalChainSpecParser;
 impl ChainSpecParser for FraxtalChainSpecParser {
     type ChainSpec = OpChainSpec;
 
-    const SUPPORTED_CHAINS: &'static [&'static str] =
-        &["fraxtal", "fraxtal-testnet", "fraxtal_testnet"];
+    const SUPPORTED_CHAINS: &'static [&'static str] = &["fraxtal", "fraxtal-testnet"];
 
     fn parse(s: &str) -> eyre::Result<Arc<Self::ChainSpec>> {
         chain_value_parser(s)
@@ -30,7 +29,7 @@ impl ChainSpecParser for FraxtalChainSpecParser {
 pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<OpChainSpec>, eyre::Error> {
     Ok(match s {
         "fraxtal" => FRAXTAL_MAINNET.clone(),
-        "fraxtal_testnet" => FRAXTAL_TESTNET.clone(),
+        "fraxtal-testnet" => FRAXTAL_TESTNET.clone(),
         _ => Arc::new(parse_genesis(s)?.into()),
     })
 }
