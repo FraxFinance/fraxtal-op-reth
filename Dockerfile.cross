@@ -11,5 +11,6 @@ ARG TARGETARCH
 
 COPY ./dist/bin/$TARGETARCH/fraxtal-op-reth/fraxtal-op-reth /usr/local/bin/fraxtal-op-reth
 
+RUN chmod +x /usr/local/bin/fraxtal-op-reth
 EXPOSE 30303 30303/udp 9001 8545 8546
 ENTRYPOINT ["/usr/local/bin/fraxtal-op-reth"]
