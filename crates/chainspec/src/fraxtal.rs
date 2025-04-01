@@ -81,6 +81,10 @@ pub(crate) static FRAXTAL_MAINNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(||
                     OpHardfork::Granite.boxed(),
                     ForkCondition::Timestamp(1738958401),
                 ),
+                (
+                    OpHardfork::Holocene.boxed(),
+                    ForkCondition::Timestamp(1744052401),
+                ),
             ]),
             base_fee_params: BaseFeeParamsKind::Variable(
                 vec![
