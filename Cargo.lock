@@ -2632,6 +2632,7 @@ dependencies = [
  "reth-ethereum-forks",
  "reth-optimism-chainspec",
  "reth-optimism-forks",
+ "reth-primitives-traits",
  "serde_json",
 ]
 
