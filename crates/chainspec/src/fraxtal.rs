@@ -31,7 +31,13 @@ pub(crate) static FRAXTAL_MAINNET: LazyLock<Arc<OpChainSpec>> = LazyLock::new(||
             base_fee_params: BaseFeeParamsKind::Variable(
                 vec![
                     (EthereumHardfork::London.boxed(), BaseFeeParams::optimism()),
-                    (OpHardfork::Canyon.boxed(), BaseFeeParams::optimism_canyon()),
+                    (
+                        OpHardfork::Canyon.boxed(),
+                        BaseFeeParams {
+                            max_change_denominator: 250,
+                            elasticity_multiplier: 10,
+                        },
+                    ),
                 ]
                 .into(),
             ),
