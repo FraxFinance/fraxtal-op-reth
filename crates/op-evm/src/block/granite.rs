@@ -155,7 +155,7 @@ where
             db.code_by_hash(current_contract_acc.code_hash)
                 .unwrap_or_default()
         })
-        .bytes_slice()
+        .original_byte_slice()
         .to_owned();
 
     for i in l1_bytecode_replacmenets {
