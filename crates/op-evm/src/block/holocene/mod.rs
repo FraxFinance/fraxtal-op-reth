@@ -23,8 +23,8 @@ where
     // If the granite hardfork is active at the current timestamp, and it was not active at the
     // previous block timestamp (heuristically, block time is not perfectly constant at 2s), and the
     // chain is an optimism chain, then we need to upgrade the frax/sfrax contracts.
-    if chain_spec.is_granite_active_at_timestamp(timestamp)
-        && !chain_spec.is_granite_active_at_timestamp(timestamp.saturating_sub(2))
+    if chain_spec.is_holocene_active_at_timestamp(timestamp)
+        && !chain_spec.is_holocene_active_at_timestamp(timestamp.saturating_sub(2))
     {
         info!(target: "evm", "Forcing frax upgrades on Holocne transition");
 
