@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use alloy_op_hardforks::OpHardforks;
 use alloy_primitives::{Address, B256, U256};
 use reth_chainspec::EthChainSpec;
 use revm::{
     database::State,
     state::{Account, Bytecode, EvmStorageSlot},
-    Database,
+    Database, DatabaseCommit,
 };
 use tracing::info;
 
@@ -85,6 +87,11 @@ where
                         ),
                     ),
                 );
+
+                db.commit(HashMap::from_iter([
+                    (implementation_addr, implementation_revm_account),
+                    (*addr, current_contract_revm_account),
+                ]));
             }
         }
 
@@ -102,6 +109,8 @@ where
                 acc.code_hash = acc.code.as_ref().unwrap_or(&Bytecode::new()).hash_slow();
                 let mut revm_acc: Account = acc.into();
                 revm_acc.mark_touch();
+
+                db.commit(HashMap::from_iter([(change.address, revm_acc)]));
             }
         }
 
@@ -117,6 +126,8 @@ where
                 );
 
                 acc.mark_touch();
+
+                db.commit(HashMap::from_iter([(change.address, acc)]));
             }
         }
     }
