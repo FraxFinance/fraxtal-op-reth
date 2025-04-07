@@ -1,22 +1,29 @@
 //! Optimism Node types config.
 
 use fraxtal_evm::FraxtalEvmConfig;
-use reth_evm::execute::BasicBlockExecutorProvider;
-use reth_node_api::FullNodeComponents;
+use reth_evm::{execute::BasicBlockExecutorProvider, ConfigureEvm};
+use reth_node_api::{FullNodeComponents, PrimitivesTy, TxTy};
 use reth_node_builder::{
-    components::{BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder},
+    components::{
+        BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
+    },
     node::{FullNodeTypes, NodeTypes, NodeTypesWithEngine},
     BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
 };
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_node::{
     args::RollupArgs,
-    node::{OpAddOns, OpConsensusBuilder, OpNetworkBuilder, OpPayloadBuilder, OpPoolBuilder},
+    node::{OpAddOns, OpConsensusBuilder, OpNetworkBuilder, OpPoolBuilder},
+    txpool::OpPooledTx,
     OpEngineTypes,
 };
-use reth_optimism_payload_builder::config::OpDAConfig;
+use reth_optimism_payload_builder::{
+    builder::OpPayloadTransactions,
+    config::{OpBuilderConfig, OpDAConfig},
+};
 use reth_optimism_primitives::{OpPrimitives, OpTransactionSigned};
 use reth_provider::{providers::ProviderFactoryBuilder, EthStorage};
+use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use reth_trie_db::MerklePatriciaTrie;
 
 /// Storage implementation for Optimism.
@@ -58,7 +65,7 @@ impl FraxtalNode {
     ) -> ComponentsBuilder<
         Node,
         OpPoolBuilder,
-        BasicPayloadServiceBuilder<OpPayloadBuilder>,
+        BasicPayloadServiceBuilder<FraxtalPayloadBuilder>,
         OpNetworkBuilder,
         FraxtalExecutorBuilder,
         OpConsensusBuilder,
@@ -85,7 +92,8 @@ impl FraxtalNode {
                     .with_enable_tx_conditional(self.args.enable_tx_conditional),
             )
             .payload(BasicPayloadServiceBuilder::new(
-                OpPayloadBuilder::new(compute_pending_block).with_da_config(self.da_config.clone()),
+                FraxtalPayloadBuilder::new(compute_pending_block)
+                    .with_da_config(self.da_config.clone()),
             ))
             .network(OpNetworkBuilder {
                 disable_txpool_gossip,
@@ -144,7 +152,7 @@ where
     type ComponentsBuilder = ComponentsBuilder<
         N,
         OpPoolBuilder,
-        BasicPayloadServiceBuilder<OpPayloadBuilder>,
+        BasicPayloadServiceBuilder<FraxtalPayloadBuilder>,
         OpNetworkBuilder,
         FraxtalExecutorBuilder,
         OpConsensusBuilder,
@@ -219,5 +227,126 @@ where
         let executor = BasicBlockExecutorProvider::new(evm_config.clone());
 
         Ok((evm_config, executor))
+    }
+}
+
+/// A basic optimism payload service builder
+#[derive(Debug, Default, Clone)]
+pub struct FraxtalPayloadBuilder<Txs = ()> {
+    /// By default the pending block equals the latest block
+    /// to save resources and not leak txs from the tx-pool,
+    /// this flag enables computing of the pending block
+    /// from the tx-pool instead.
+    ///
+    /// If `compute_pending_block` is not enabled, the payload builder
+    /// will use the payload attributes from the latest block. Note
+    /// that this flag is not yet functional.
+    pub compute_pending_block: bool,
+    /// The type responsible for yielding the best transactions for the payload if mempool
+    /// transactions are allowed.
+    pub best_transactions: Txs,
+    /// This data availability configuration specifies constraints for the payload builder
+    /// when assembling payloads
+    pub da_config: OpDAConfig,
+}
+
+impl FraxtalPayloadBuilder {
+    /// Create a new instance with the given `compute_pending_block` flag and data availability
+    /// config.
+    pub fn new(compute_pending_block: bool) -> Self {
+        Self {
+            compute_pending_block,
+            best_transactions: (),
+            da_config: OpDAConfig::default(),
+        }
+    }
+
+    /// Configure the data availability configuration for the OP payload builder.
+    pub fn with_da_config(mut self, da_config: OpDAConfig) -> Self {
+        self.da_config = da_config;
+        self
+    }
+}
+
+impl<Txs> FraxtalPayloadBuilder<Txs> {
+    /// Configures the type responsible for yielding the transactions that should be included in the
+    /// payload.
+    pub fn with_transactions<T>(self, best_transactions: T) -> FraxtalPayloadBuilder<T> {
+        let Self {
+            compute_pending_block,
+            da_config,
+            ..
+        } = self;
+        FraxtalPayloadBuilder {
+            compute_pending_block,
+            best_transactions,
+            da_config,
+        }
+    }
+
+    /// A helper method to initialize [`reth_optimism_payload_builder::OpPayloadBuilder`] with the
+    /// given EVM config.
+    pub fn build<Node, Evm, Pool>(
+        self,
+        evm_config: Evm,
+        ctx: &BuilderContext<Node>,
+        pool: Pool,
+    ) -> eyre::Result<reth_optimism_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs>>
+    where
+        Node: FullNodeTypes<
+            Types: NodeTypesWithEngine<
+                Engine = OpEngineTypes,
+                ChainSpec = OpChainSpec,
+                Primitives = OpPrimitives,
+            >,
+        >,
+        Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
+            + Unpin
+            + 'static,
+        Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>>,
+        Txs: OpPayloadTransactions<Pool::Transaction>,
+    {
+        let payload_builder = reth_optimism_payload_builder::OpPayloadBuilder::with_builder_config(
+            pool,
+            ctx.provider().clone(),
+            evm_config,
+            OpBuilderConfig {
+                da_config: self.da_config.clone(),
+            },
+        )
+        .with_transactions(self.best_transactions.clone())
+        .set_compute_pending_block(self.compute_pending_block);
+        Ok(payload_builder)
+    }
+}
+
+impl<Node, Pool, Txs> PayloadBuilderBuilder<Node, Pool> for FraxtalPayloadBuilder<Txs>
+where
+    Node: FullNodeTypes<
+        Types: NodeTypesWithEngine<
+            Engine = OpEngineTypes,
+            ChainSpec = OpChainSpec,
+            Primitives = OpPrimitives,
+        >,
+    >,
+    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
+        + Unpin
+        + 'static,
+    Txs: OpPayloadTransactions<Pool::Transaction>,
+    <Pool as TransactionPool>::Transaction: OpPooledTx,
+{
+    type PayloadBuilder = reth_optimism_payload_builder::OpPayloadBuilder<
+        Pool,
+        Node::Provider,
+        FraxtalEvmConfig,
+        Txs,
+    >;
+
+    async fn build_payload_builder(
+        self,
+        ctx: &BuilderContext<Node>,
+        pool: Pool,
+    ) -> eyre::Result<Self::PayloadBuilder> {
+        self.build(FraxtalEvmConfig::optimism(ctx.chain_spec()), ctx, pool)
     }
 }
