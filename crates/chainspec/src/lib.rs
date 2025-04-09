@@ -12,6 +12,16 @@ mod fraxtal_testnet;
 #[non_exhaustive]
 pub struct FraxtalChainSpecParser;
 
+impl FraxtalChainSpecParser {
+    pub fn mainnet() -> Arc<OpChainSpec> {
+        FRAXTAL_MAINNET.clone()
+    }
+
+    pub fn holesky() -> Arc<OpChainSpec> {
+        FRAXTAL_TESTNET.clone()
+    }
+}
+
 impl ChainSpecParser for FraxtalChainSpecParser {
     type ChainSpec = OpChainSpec;
 
