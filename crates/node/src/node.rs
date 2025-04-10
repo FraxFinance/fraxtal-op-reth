@@ -1,5 +1,3 @@
-//! Optimism Node types config.
-
 use fraxtal_evm::FraxtalEvmConfig;
 use reth_evm::{execute::BasicBlockExecutorProvider, ConfigureEvm};
 use reth_node_api::{FullNodeComponents, PrimitivesTy, TxTy};
@@ -7,7 +5,7 @@ use reth_node_builder::{
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
     },
-    node::{FullNodeTypes, NodeTypes, NodeTypesWithEngine},
+    node::{FullNodeTypes, NodeTypes},
     BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
 };
 use reth_optimism_chainspec::OpChainSpec;
@@ -72,8 +70,8 @@ impl FraxtalNode {
     >
     where
         Node: FullNodeTypes<
-            Types: NodeTypesWithEngine<
-                Engine = OpEngineTypes,
+            Types: NodeTypes<
+                Payload = OpEngineTypes,
                 ChainSpec = OpChainSpec,
                 Primitives = OpPrimitives,
             >,
@@ -141,8 +139,8 @@ impl FraxtalNode {
 impl<N> Node<N> for FraxtalNode
 where
     N: FullNodeTypes<
-        Types: NodeTypesWithEngine<
-            Engine = OpEngineTypes,
+        Types: NodeTypes<
+            Payload = OpEngineTypes,
             ChainSpec = OpChainSpec,
             Primitives = OpPrimitives,
             Storage = OpStorage,
@@ -201,10 +199,7 @@ impl NodeTypes for FraxtalNode {
     type ChainSpec = OpChainSpec;
     type StateCommitment = MerklePatriciaTrie;
     type Storage = OpStorage;
-}
-
-impl NodeTypesWithEngine for FraxtalNode {
-    type Engine = OpEngineTypes;
+    type Payload = OpEngineTypes;
 }
 
 /// A regular optimism evm and executor builder.
@@ -294,8 +289,8 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
     ) -> eyre::Result<reth_optimism_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs>>
     where
         Node: FullNodeTypes<
-            Types: NodeTypesWithEngine<
-                Engine = OpEngineTypes,
+            Types: NodeTypes<
+                Payload = OpEngineTypes,
                 ChainSpec = OpChainSpec,
                 Primitives = OpPrimitives,
             >,
@@ -323,8 +318,8 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
 impl<Node, Pool, Txs> PayloadBuilderBuilder<Node, Pool> for FraxtalPayloadBuilder<Txs>
 where
     Node: FullNodeTypes<
-        Types: NodeTypesWithEngine<
-            Engine = OpEngineTypes,
+        Types: NodeTypes<
+            Payload = OpEngineTypes,
             ChainSpec = OpChainSpec,
             Primitives = OpPrimitives,
         >,

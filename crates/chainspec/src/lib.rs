@@ -12,16 +12,6 @@ mod fraxtal_testnet;
 #[non_exhaustive]
 pub struct FraxtalChainSpecParser;
 
-impl FraxtalChainSpecParser {
-    pub fn mainnet() -> Arc<OpChainSpec> {
-        FRAXTAL_MAINNET.clone()
-    }
-
-    pub fn holesky() -> Arc<OpChainSpec> {
-        FRAXTAL_TESTNET.clone()
-    }
-}
-
 impl ChainSpecParser for FraxtalChainSpecParser {
     type ChainSpec = OpChainSpec;
 
@@ -53,5 +43,20 @@ mod tests {
         for &chain in FraxtalChainSpecParser::SUPPORTED_CHAINS {
             assert!(<FraxtalChainSpecParser as ChainSpecParser>::parse(chain).is_ok());
         }
+    }
+}
+
+/// Optimism chain specification parser.
+#[derive(Debug, Clone, Default)]
+#[non_exhaustive]
+pub struct FraxtalChainSpec;
+
+impl FraxtalChainSpec {
+    pub fn mainnet() -> Arc<OpChainSpec> {
+        FRAXTAL_MAINNET.clone()
+    }
+
+    pub fn holesky() -> Arc<OpChainSpec> {
+        FRAXTAL_TESTNET.clone()
     }
 }

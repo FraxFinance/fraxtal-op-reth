@@ -2,8 +2,9 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use alloy_consensus::{BlockHeader, Header};
-use alloy_evm::FromRecoveredTx;
+use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_op_evm::{block::receipt_builder::OpReceiptBuilder, OpBlockExecutionCtx};
+use alloy_primitives::U256;
 use core::fmt::Debug;
 use fraxtal_op_evm::{block::FraxtalBlockExecutorFactory, FraxtalEvmFactory};
 use op_alloy_consensus::EIP1559ParamError;
@@ -24,7 +25,6 @@ use revm::{
     context_interface::block::BlobExcessGasAndPrice,
     primitives::hardfork::SpecId,
 };
-use revm_primitives::alloy_primitives::U256;
 
 /// Optimism-related EVM configuration.
 #[derive(Debug)]
@@ -33,8 +33,10 @@ pub struct FraxtalEvmConfig<
     N: NodePrimitives = OpPrimitives,
     R = OpRethReceiptBuilder,
 > {
-    executor_factory: FraxtalBlockExecutorFactory<R, Arc<ChainSpec>>,
-    block_assembler: OpBlockAssembler<ChainSpec>,
+    /// Inner [`FraxtalBlockExecutorFactory`].
+    pub executor_factory: FraxtalBlockExecutorFactory<R, Arc<ChainSpec>>,
+    /// Optimism block assembler.
+    pub block_assembler: OpBlockAssembler<ChainSpec>,
     _pd: core::marker::PhantomData<N>,
 }
 
@@ -85,7 +87,7 @@ where
         BlockBody = alloy_consensus::BlockBody<R::Transaction>,
         Block = alloy_consensus::Block<R::Transaction>,
     >,
-    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx>,
+    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     R: OpReceiptBuilder<Receipt: DepositReceipt, Transaction: SignedTransaction>,
     Self: Send + Sync + Unpin + Clone + 'static,
 {

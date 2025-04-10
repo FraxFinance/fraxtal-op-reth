@@ -31,6 +31,7 @@ op-revm.workspace = true
 # alloy
 alloy-consensus.workspace = true
 alloy-eips.workspace = true
+alloy-primitives.workspace = true
 
 # Optimism
 op-alloy-consensus.workspace = true
