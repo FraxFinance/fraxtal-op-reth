@@ -1,7 +1,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use alloy_evm::{Database, Evm, EvmEnv, EvmFactory};
+use alloy_evm::{precompiles::PrecompilesMap, Database, Evm, EvmEnv, EvmFactory};
 use alloy_primitives::{Address, Bytes, TxKind, U256};
 use core::{
     fmt::Debug,
@@ -38,17 +38,12 @@ pub struct FraxtalEvm<DB: Database, I, P = OpPrecompiles> {
 impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
     /// Provides a reference to the EVM context.
     pub const fn ctx(&self) -> &OpContext<DB> {
-        &self.inner.0.data.ctx
+        &self.inner.0.ctx
     }
 
     /// Provides a mutable reference to the EVM context.
     pub fn ctx_mut(&mut self) -> &mut OpContext<DB> {
-        &mut self.inner.0.data.ctx
-    }
-
-    /// Provides a mutable reference to the EVM inspector.
-    pub fn inspector_mut(&mut self) -> &mut I {
-        &mut self.inner.0.data.inspector
+        &mut self.inner.0.ctx
     }
 }
 
@@ -95,9 +90,15 @@ where
     type Error = EVMError<DB::Error, OpTransactionError>;
     type HaltReason = OpHaltReason;
     type Spec = OpSpecId;
+    type Precompiles = P;
+    type Inspector = I;
 
     fn block(&self) -> &BlockEnv {
         &self.block
+    }
+
+    fn chain_id(&self) -> u64 {
+        self.cfg.chain_id
     }
 
     fn transact_raw(
@@ -192,13 +193,29 @@ where
             cfg: cfg_env,
             journaled_state,
             ..
-        } = self.inner.0.data.ctx;
+        } = self.inner.0.ctx;
 
         (journaled_state.database, EvmEnv { block_env, cfg_env })
     }
 
     fn set_inspector_enabled(&mut self, enabled: bool) {
         self.inspect = enabled;
+    }
+
+    fn precompiles(&self) -> &Self::Precompiles {
+        &self.inner.0.precompiles
+    }
+
+    fn precompiles_mut(&mut self) -> &mut Self::Precompiles {
+        &mut self.inner.0.precompiles
+    }
+
+    fn inspector(&self) -> &Self::Inspector {
+        &self.inner.0.inspector
+    }
+
+    fn inspector_mut(&mut self) -> &mut Self::Inspector {
+        &mut self.inner.0.inspector
     }
 }
 
@@ -208,25 +225,30 @@ where
 pub struct FraxtalEvmFactory;
 
 impl EvmFactory for FraxtalEvmFactory {
-    type Evm<DB: Database, I: Inspector<OpContext<DB>>> = FraxtalEvm<DB, I>;
+    type Evm<DB: Database, I: Inspector<OpContext<DB>>> = FraxtalEvm<DB, I, Self::Precompiles>;
     type Context<DB: Database> = OpContext<DB>;
     type Tx = OpTransaction<TxEnv>;
     type Error<DBError: core::error::Error + Send + Sync + 'static> =
         EVMError<DBError, OpTransactionError>;
     type HaltReason = OpHaltReason;
     type Spec = OpSpecId;
+    type Precompiles = PrecompilesMap;
 
     fn create_evm<DB: Database>(
         &self,
         db: DB,
         input: EvmEnv<OpSpecId>,
     ) -> Self::Evm<DB, NoOpInspector> {
+        let spec_id = input.cfg_env.spec;
         FraxtalEvm {
             inner: Context::op()
                 .with_db(db)
                 .with_block(input.block_env)
                 .with_cfg(input.cfg_env)
-                .build_op_with_inspector(NoOpInspector {}),
+                .build_op_with_inspector(NoOpInspector {})
+                .with_precompiles(PrecompilesMap::from_static(
+                    OpPrecompiles::new_with_spec(spec_id).precompiles(),
+                )),
             inspect: false,
         }
     }
@@ -237,12 +259,16 @@ impl EvmFactory for FraxtalEvmFactory {
         input: EvmEnv<OpSpecId>,
         inspector: I,
     ) -> Self::Evm<DB, I> {
+        let spec_id = input.cfg_env.spec;
         FraxtalEvm {
             inner: Context::op()
                 .with_db(db)
                 .with_block(input.block_env)
                 .with_cfg(input.cfg_env)
-                .build_op_with_inspector(inspector),
+                .build_op_with_inspector(inspector)
+                .with_precompiles(PrecompilesMap::from_static(
+                    OpPrecompiles::new_with_spec(spec_id).precompiles(),
+                )),
             inspect: true,
         }
     }

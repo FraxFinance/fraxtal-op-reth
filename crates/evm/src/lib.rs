@@ -6,7 +6,7 @@ use alloy_evm::{FromRecoveredTx, FromTxWithEncoded};
 use alloy_op_evm::{block::receipt_builder::OpReceiptBuilder, OpBlockExecutionCtx};
 use alloy_primitives::U256;
 use core::fmt::Debug;
-use fraxtal_op_evm::{block::FraxtalBlockExecutorFactory, FraxtalEvmFactory};
+use fraxtal_op_evm::{FraxtalBlockExecutorFactory, FraxtalEvmFactory};
 use op_alloy_consensus::EIP1559ParamError;
 use op_revm::{OpSpecId, OpTransaction};
 use reth_chainspec::EthChainSpec;
@@ -26,6 +26,8 @@ use revm::{
     primitives::hardfork::SpecId,
 };
 
+pub use alloy_op_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
+
 /// Optimism-related EVM configuration.
 #[derive(Debug)]
 pub struct FraxtalEvmConfig<
@@ -33,7 +35,7 @@ pub struct FraxtalEvmConfig<
     N: NodePrimitives = OpPrimitives,
     R = OpRethReceiptBuilder,
 > {
-    /// Inner [`FraxtalBlockExecutorFactory`].
+    /// Inner [`OpBlockExecutorFactory`].
     pub executor_factory: FraxtalBlockExecutorFactory<R, Arc<ChainSpec>>,
     /// Optimism block assembler.
     pub block_assembler: OpBlockAssembler<ChainSpec>,
@@ -50,15 +52,15 @@ impl<ChainSpec, N: NodePrimitives, R: Clone> Clone for FraxtalEvmConfig<ChainSpe
     }
 }
 
-impl<ChainSpec> FraxtalEvmConfig<ChainSpec> {
+impl<ChainSpec: OpHardforks> FraxtalEvmConfig<ChainSpec> {
     /// Creates a new [`FraxtalEvmConfig`] with the given chain spec for OP chains.
     pub fn optimism(chain_spec: Arc<ChainSpec>) -> Self {
         Self::new(chain_spec, OpRethReceiptBuilder::default())
     }
 }
 
-impl<ChainSpec, N: NodePrimitives, R> FraxtalEvmConfig<ChainSpec, N, R> {
-    /// Creates a new [`FraxtalEvmConfig`] with the given chain spec.
+impl<ChainSpec: OpHardforks, N: NodePrimitives, R> FraxtalEvmConfig<ChainSpec, N, R> {
+    /// Creates a new [`OpEvmConfig`] with the given chain spec.
     pub fn new(chain_spec: Arc<ChainSpec>, receipt_builder: R) -> Self {
         Self {
             block_assembler: OpBlockAssembler::new(chain_spec.clone()),

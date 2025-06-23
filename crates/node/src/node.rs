@@ -1,6 +1,7 @@
 use fraxtal_evm::FraxtalEvmConfig;
-use reth_evm::{execute::BasicBlockExecutorProvider, ConfigureEvm};
-use reth_node_api::{FullNodeComponents, PrimitivesTy, TxTy};
+use reth_chainspec::{ChainSpecProvider, Hardforks};
+use reth_evm::ConfigureEvm;
+use reth_node_api::{FullNodeComponents, PayloadTypes, PrimitivesTy, TxTy};
 use reth_node_builder::{
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
@@ -9,19 +10,26 @@ use reth_node_builder::{
     BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
 };
 use reth_optimism_chainspec::OpChainSpec;
+use reth_optimism_evm::{OpNextBlockEnvAttributes, OpRethReceiptBuilder};
+use reth_optimism_forks::OpHardforks;
 use reth_optimism_node::{
     args::RollupArgs,
-    node::{OpAddOns, OpConsensusBuilder, OpNetworkBuilder, OpPoolBuilder},
+    node::{
+        OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNetworkBuilder, OpNodeTypes,
+        OpPoolBuilder,
+    },
     txpool::OpPooledTx,
-    OpEngineTypes,
+    OpEngineApiBuilder, OpEngineTypes, OpPayloadAttributes,
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig},
+    OpBuiltPayload, OpPayloadBuilderAttributes, OpPayloadPrimitives,
 };
 use reth_optimism_primitives::{OpPrimitives, OpTransactionSigned};
+use reth_optimism_rpc::eth::OpEthApiBuilder;
 use reth_provider::{providers::ProviderFactoryBuilder, EthStorage};
-use reth_transaction_pool::{PoolTransaction, TransactionPool};
+use reth_transaction_pool::TransactionPool;
 use reth_trie_db::MerklePatriciaTrie;
 
 /// Storage implementation for Optimism.
@@ -42,6 +50,16 @@ pub struct FraxtalNode {
     pub da_config: OpDAConfig,
 }
 
+/// A [`ComponentsBuilder`] with its generic arguments set to a stack of Optimism specific builders.
+pub type FraxtalNodeComponentBuilder<Node, Payload = FraxtalPayloadBuilder> = ComponentsBuilder<
+    Node,
+    OpPoolBuilder,
+    BasicPayloadServiceBuilder<Payload>,
+    OpNetworkBuilder,
+    FraxtalExecutorBuilder,
+    OpConsensusBuilder,
+>;
+
 impl FraxtalNode {
     /// Creates a new instance of the Optimism node type.
     pub fn new(args: RollupArgs) -> Self {
@@ -58,24 +76,9 @@ impl FraxtalNode {
     }
 
     /// Returns the components for the given [`RollupArgs`].
-    pub fn components<Node>(
-        &self,
-    ) -> ComponentsBuilder<
-        Node,
-        OpPoolBuilder,
-        BasicPayloadServiceBuilder<FraxtalPayloadBuilder>,
-        OpNetworkBuilder,
-        FraxtalExecutorBuilder,
-        OpConsensusBuilder,
-    >
+    pub fn components<Node>(&self) -> FraxtalNodeComponentBuilder<Node>
     where
-        Node: FullNodeTypes<
-            Types: NodeTypes<
-                Payload = OpEngineTypes,
-                ChainSpec = OpChainSpec,
-                Primitives = OpPrimitives,
-            >,
-        >,
+        Node: FullNodeTypes<Types: OpNodeTypes>,
     {
         let RollupArgs {
             disable_txpool_gossip,
@@ -87,17 +90,18 @@ impl FraxtalNode {
             .node_types::<Node>()
             .pool(
                 OpPoolBuilder::default()
-                    .with_enable_tx_conditional(self.args.enable_tx_conditional),
+                    .with_enable_tx_conditional(self.args.enable_tx_conditional)
+                    .with_supervisor(
+                        self.args.supervisor_http.clone(),
+                        self.args.supervisor_safety_level,
+                    ),
             )
+            .executor(FraxtalExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 FraxtalPayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone()),
             ))
-            .network(OpNetworkBuilder {
-                disable_txpool_gossip,
-                disable_discovery_v4: !discovery_v4,
-            })
-            .executor(FraxtalExecutorBuilder::default())
+            .network(OpNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
             .consensus(OpConsensusBuilder::default())
     }
 
@@ -116,7 +120,7 @@ impl FraxtalNode {
     ///     OpNode::provider_factory_builder().open_read_only(BASE_MAINNET.clone(), "datadir").unwrap();
     /// ```
     ///
-    /// # Open a Providerfactory manually with with all required components
+    /// # Open a Providerfactory manually with all required components
     ///
     /// ```no_run
     /// use reth_db::open_db_read_only;
@@ -141,7 +145,7 @@ where
     N: FullNodeTypes<
         Types: NodeTypes<
             Payload = OpEngineTypes,
-            ChainSpec = OpChainSpec,
+            ChainSpec: OpHardforks + Hardforks,
             Primitives = OpPrimitives,
             Storage = OpStorage,
         >,
@@ -156,8 +160,12 @@ where
         OpConsensusBuilder,
     >;
 
-    type AddOns =
-        OpAddOns<NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>>;
+    type AddOns = OpAddOns<
+        NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
+        OpEthApiBuilder,
+        OpEngineValidatorBuilder,
+        OpEngineApiBuilder<OpEngineValidatorBuilder>,
+    >;
 
     fn components_builder(&self) -> Self::ComponentsBuilder {
         Self::components(self)
@@ -165,9 +173,11 @@ where
 
     fn add_ons(&self) -> Self::AddOns {
         Self::AddOns::builder()
-            .with_sequencer(self.args.sequencer_http.clone())
+            .with_sequencer(self.args.sequencer.clone())
+            .with_sequencer_headers(self.args.sequencer_headers.clone())
             .with_da_config(self.da_config.clone())
             .with_enable_tx_conditional(self.args.enable_tx_conditional)
+            .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
             .build()
     }
 }
@@ -179,18 +189,7 @@ where
     type RpcBlock = alloy_rpc_types_eth::Block<op_alloy_consensus::OpTxEnvelope>;
 
     fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_node_api::BlockTy<Self> {
-        let alloy_rpc_types_eth::Block {
-            header,
-            transactions,
-            ..
-        } = rpc_block;
-        reth_optimism_primitives::OpBlock {
-            header: header.inner,
-            body: reth_optimism_primitives::OpBlockBody {
-                transactions: transactions.into_transactions().map(Into::into).collect(),
-                ..Default::default()
-            },
-        }
+        rpc_block.into_consensus()
     }
 }
 
@@ -209,19 +208,17 @@ pub struct FraxtalExecutorBuilder;
 
 impl<Node> ExecutorBuilder<Node> for FraxtalExecutorBuilder
 where
-    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = OpChainSpec, Primitives = OpPrimitives>>,
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec: OpHardforks, Primitives = OpPrimitives>>,
 {
-    type EVM = FraxtalEvmConfig;
-    type Executor = BasicBlockExecutorProvider<Self::EVM>;
+    type EVM = FraxtalEvmConfig<
+        <Node::Types as NodeTypes>::ChainSpec,
+        <Node::Types as NodeTypes>::Primitives,
+    >;
 
-    async fn build_evm(
-        self,
-        ctx: &BuilderContext<Node>,
-    ) -> eyre::Result<(Self::EVM, Self::Executor)> {
-        let evm_config = FraxtalEvmConfig::optimism(ctx.chain_spec());
-        let executor = BasicBlockExecutorProvider::new(evm_config.clone());
+    async fn build_evm(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
+        let evm_config = FraxtalEvmConfig::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
 
-        Ok((evm_config, executor))
+        Ok(evm_config)
     }
 }
 
@@ -278,29 +275,37 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
             da_config,
         }
     }
+}
 
-    /// A helper method to initialize [`reth_optimism_payload_builder::OpPayloadBuilder`] with the
-    /// given EVM config.
-    pub fn build<Node, Evm, Pool>(
-        self,
-        evm_config: Evm,
-        ctx: &BuilderContext<Node>,
-        pool: Pool,
-    ) -> eyre::Result<reth_optimism_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs>>
-    where
-        Node: FullNodeTypes<
-            Types: NodeTypes<
-                Payload = OpEngineTypes,
-                ChainSpec = OpChainSpec,
-                Primitives = OpPrimitives,
+impl<Node, Pool, Txs, Evm> PayloadBuilderBuilder<Node, Pool, Evm> for FraxtalPayloadBuilder<Txs>
+where
+    Node: FullNodeTypes<
+        Provider: ChainSpecProvider<ChainSpec: OpHardforks>,
+        Types: NodeTypes<
+            Primitives: OpPayloadPrimitives,
+            Payload: PayloadTypes<
+                BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
+                PayloadAttributes = OpPayloadAttributes,
+                PayloadBuilderAttributes = OpPayloadBuilderAttributes<TxTy<Node::Types>>,
             >,
         >,
-        Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
-            + Unpin
-            + 'static,
-        Evm: ConfigureEvm<Primitives = PrimitivesTy<Node::Types>>,
-        Txs: OpPayloadTransactions<Pool::Transaction>,
-    {
+    >,
+    Evm: ConfigureEvm<
+            Primitives = PrimitivesTy<Node::Types>,
+            NextBlockEnvCtx = OpNextBlockEnvAttributes,
+        > + 'static,
+    Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
+    Txs: OpPayloadTransactions<Pool::Transaction>,
+{
+    type PayloadBuilder =
+        reth_optimism_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs>;
+
+    async fn build_payload_builder(
+        self,
+        ctx: &BuilderContext<Node>,
+        pool: Pool,
+        evm_config: Evm,
+    ) -> eyre::Result<Self::PayloadBuilder> {
         let payload_builder = reth_optimism_payload_builder::OpPayloadBuilder::with_builder_config(
             pool,
             ctx.provider().clone(),
@@ -312,36 +317,5 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
         .with_transactions(self.best_transactions.clone())
         .set_compute_pending_block(self.compute_pending_block);
         Ok(payload_builder)
-    }
-}
-
-impl<Node, Pool, Txs> PayloadBuilderBuilder<Node, Pool> for FraxtalPayloadBuilder<Txs>
-where
-    Node: FullNodeTypes<
-        Types: NodeTypes<
-            Payload = OpEngineTypes,
-            ChainSpec = OpChainSpec,
-            Primitives = OpPrimitives,
-        >,
-    >,
-    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TxTy<Node::Types>>>
-        + Unpin
-        + 'static,
-    Txs: OpPayloadTransactions<Pool::Transaction>,
-    <Pool as TransactionPool>::Transaction: OpPooledTx,
-{
-    type PayloadBuilder = reth_optimism_payload_builder::OpPayloadBuilder<
-        Pool,
-        Node::Provider,
-        FraxtalEvmConfig,
-        Txs,
-    >;
-
-    async fn build_payload_builder(
-        self,
-        ctx: &BuilderContext<Node>,
-        pool: Pool,
-    ) -> eyre::Result<Self::PayloadBuilder> {
-        self.build(FraxtalEvmConfig::optimism(ctx.chain_spec()), ctx, pool)
     }
 }

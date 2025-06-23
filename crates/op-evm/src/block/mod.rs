@@ -1,5 +1,6 @@
 //! Block executor for Optimism.
 
+use crate::FraxtalEvmFactory;
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
 use alloy_consensus::{Eip658Value, Header, Transaction, TxReceipt};
 use alloy_eips::{Encodable2718, Typed2718};
@@ -7,7 +8,7 @@ use alloy_evm::{
     block::{
         state_changes::{balance_increment_state, post_block_balance_increments},
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        BlockExecutorFor, BlockValidationError, ExecutableTx, OnStateHook,
+        BlockExecutorFor, BlockValidationError, CommitChanges, ExecutableTx, OnStateHook,
         StateChangePostBlockSource, StateChangeSource, SystemCaller,
     },
     eth::receipt_builder::ReceiptBuilderCtx,
@@ -22,9 +23,11 @@ use canyon::ensure_create2_deployer;
 use op_alloy_consensus::OpDepositReceipt;
 use op_revm::transaction::deposit::DEPOSIT_TRANSACTION_TYPE;
 use reth_chainspec::EthChainSpec;
-use revm::{context::result::ResultAndState, database::State, DatabaseCommit, Inspector};
-
-use crate::FraxtalEvmFactory;
+use revm::{
+    context::result::{ExecutionResult, ResultAndState},
+    database::State,
+    DatabaseCommit, Inspector,
+};
 
 mod canyon;
 mod granite;
@@ -58,7 +61,7 @@ where
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
-    /// Creates a new [`FraxtalBlockExecutor`].
+    /// Creates a new [`OpBlockExecutor`].
     pub fn new(evm: E, ctx: OpBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             is_regolith: spec.is_regolith_active_at_timestamp(evm.block().timestamp),
@@ -117,11 +120,11 @@ where
         Ok(())
     }
 
-    fn execute_transaction_with_result_closure(
+    fn execute_transaction_with_commit_condition(
         &mut self,
         tx: impl ExecutableTx<Self>,
-        f: impl FnOnce(&revm::context::result::ExecutionResult<<Self::Evm as Evm>::HaltReason>),
-    ) -> Result<u64, BlockExecutionError> {
+        f: impl FnOnce(&ExecutionResult<<Self::Evm as Evm>::HaltReason>) -> CommitChanges,
+    ) -> Result<Option<u64>, BlockExecutionError> {
         let is_deposit = tx.tx().ty() == DEPOSIT_TRANSACTION_TYPE;
 
         // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
@@ -155,18 +158,17 @@ where
         let hash = tx.tx().trie_hash();
 
         // Execute transaction.
-        let result_and_state = self
+        let ResultAndState { result, state } = self
             .evm
             .transact(tx)
             .map_err(move |err| BlockExecutionError::evm(err, hash))?;
 
-        self.system_caller.on_state(
-            StateChangeSource::Transaction(self.receipts.len()),
-            &result_and_state.state,
-        );
-        let ResultAndState { result, state } = result_and_state;
+        if !f(&result).should_commit() {
+            return Ok(None);
+        }
 
-        f(&result);
+        self.system_caller
+            .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
 
         let gas_used = result.gas_used();
 
@@ -212,7 +214,7 @@ where
 
         self.evm.db_mut().commit(state);
 
-        Ok(gas_used)
+        Ok(Some(gas_used))
     }
 
     fn finish(
@@ -279,7 +281,7 @@ pub struct FraxtalBlockExecutorFactory<
 }
 
 impl<R, Spec, EvmFactory> FraxtalBlockExecutorFactory<R, Spec, EvmFactory> {
-    /// Creates a new [`FraxtalBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
+    /// Creates a new [`OpBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
     /// [`OpReceiptBuilder`].
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
         Self {
