@@ -75,6 +75,7 @@ where
                         U256::from_be_bytes(
                             B256::left_padding_from(constants::PROXY_ADMIN_ADDR.as_slice()).into(),
                         ),
+                        0,
                     ),
                 );
                 info!(target: "evm", "Setting proxy {} implementation to {}", constants::PROXY_ADDR, implementation_addr);
@@ -85,6 +86,7 @@ where
                         U256::from_be_bytes(
                             B256::left_padding_from(implementation_addr.as_slice()).into(),
                         ),
+                        0,
                     ),
                 );
 
@@ -122,7 +124,7 @@ where
 
                 acc.storage.insert(
                     change.storage_slot.into(),
-                    EvmStorageSlot::new_changed(U256::default(), change.value.into()),
+                    EvmStorageSlot::new_changed(U256::default(), change.value.into(), 0),
                 );
 
                 acc.mark_touch();

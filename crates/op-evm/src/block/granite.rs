@@ -191,6 +191,7 @@ where
         EvmStorageSlot::new_changed(
             U256::default(),
             U256::from_be_bytes(B256::left_padding_from(owner.as_slice()).into()),
+            0,
         ),
     );
     info!(target: "evm", "Setting proxy {} implementation to {}", proxy_source_addr, implementation_addr);
@@ -199,17 +200,22 @@ where
         EvmStorageSlot::new_changed(
             U256::default(),
             U256::from_be_bytes(B256::left_padding_from(implementation_addr.as_slice()).into()),
+            0,
         ),
     );
 
     info!(target: "evm", "Setting proxy {} name and symbol", proxy_source_addr);
     current_contract_revm_account.storage.insert(
         U256::from(3),
-        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(name_storage.into())),
+        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(name_storage.into()), 0),
     );
     current_contract_revm_account.storage.insert(
         U256::from(4),
-        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(symbol_storage.into())),
+        EvmStorageSlot::new_changed(
+            U256::default(),
+            U256::from_be_bytes(symbol_storage.into()),
+            0,
+        ),
     );
 
     db.commit(HashMap::from_iter([

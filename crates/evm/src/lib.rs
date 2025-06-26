@@ -60,7 +60,7 @@ impl<ChainSpec: OpHardforks> FraxtalEvmConfig<ChainSpec> {
 }
 
 impl<ChainSpec: OpHardforks, N: NodePrimitives, R> FraxtalEvmConfig<ChainSpec, N, R> {
-    /// Creates a new [`OpEvmConfig`] with the given chain spec.
+    /// Creates a new [`FraxtalEvmConfig`] with the given chain spec.
     pub fn new(chain_spec: Arc<ChainSpec>, receipt_builder: R) -> Self {
         Self {
             block_assembler: OpBlockAssembler::new(chain_spec.clone()),
@@ -114,10 +114,18 @@ where
             .with_chain_id(self.chain_spec().chain().id())
             .with_spec(spec);
 
+        let blob_excess_gas_and_price = spec
+            .into_eth_spec()
+            .is_enabled_in(SpecId::CANCUN)
+            .then_some(BlobExcessGasAndPrice {
+                excess_blob_gas: 0,
+                blob_gasprice: 0,
+            });
+
         let block_env = BlockEnv {
-            number: header.number(),
+            number: U256::from(header.number()),
             beneficiary: header.beneficiary(),
-            timestamp: header.timestamp(),
+            timestamp: U256::from(header.timestamp()),
             difficulty: if spec.into_eth_spec() >= SpecId::MERGE {
                 U256::ZERO
             } else {
@@ -131,9 +139,7 @@ where
             gas_limit: header.gas_limit(),
             basefee: header.base_fee_per_gas().unwrap_or_default(),
             // EIP-4844 excess blob gas of this block, introduced in Cancun
-            blob_excess_gas_and_price: header.excess_blob_gas().map(|excess_blob_gas| {
-                BlobExcessGasAndPrice::new(excess_blob_gas, spec.into_eth_spec() >= SpecId::PRAGUE)
-            }),
+            blob_excess_gas_and_price,
         };
 
         EvmEnv { cfg_env, block_env }
@@ -154,18 +160,18 @@ where
 
         // if the parent block did not have excess blob gas (i.e. it was pre-cancun), but it is
         // cancun now, we need to set the excess blob gas to the default value(0)
-        let blob_excess_gas_and_price = parent
-            .maybe_next_block_excess_blob_gas(
-                self.chain_spec()
-                    .blob_params_at_timestamp(attributes.timestamp),
-            )
-            .or_else(|| (spec_id.into_eth_spec().is_enabled_in(SpecId::CANCUN)).then_some(0))
-            .map(|gas| BlobExcessGasAndPrice::new(gas, false));
+        let blob_excess_gas_and_price = spec_id
+            .into_eth_spec()
+            .is_enabled_in(SpecId::CANCUN)
+            .then_some(BlobExcessGasAndPrice {
+                excess_blob_gas: 0,
+                blob_gasprice: 0,
+            });
 
         let block_env = BlockEnv {
-            number: parent.number() + 1,
+            number: U256::from(parent.number() + 1),
             beneficiary: attributes.suggested_fee_recipient,
-            timestamp: attributes.timestamp,
+            timestamp: U256::from(attributes.timestamp),
             difficulty: U256::ZERO,
             prevrandao: Some(attributes.prev_randao),
             gas_limit: attributes.gas_limit,

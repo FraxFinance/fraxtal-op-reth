@@ -1,5 +1,5 @@
 use fraxtal_evm::FraxtalEvmConfig;
-use reth_chainspec::{ChainSpecProvider, Hardforks};
+use reth_chainspec::ChainSpecProvider;
 use reth_evm::ConfigureEvm;
 use reth_node_api::{FullNodeComponents, PayloadTypes, PrimitivesTy, TxTy};
 use reth_node_builder::{
@@ -19,21 +19,18 @@ use reth_optimism_node::{
         OpPoolBuilder,
     },
     txpool::OpPooledTx,
-    OpEngineApiBuilder, OpEngineTypes, OpPayloadAttributes,
+    OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpPayloadAttributes, OpStorage,
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig},
     OpBuiltPayload, OpPayloadBuilderAttributes, OpPayloadPrimitives,
 };
-use reth_optimism_primitives::{OpPrimitives, OpTransactionSigned};
+use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
-use reth_provider::{providers::ProviderFactoryBuilder, EthStorage};
+use reth_provider::providers::ProviderFactoryBuilder;
 use reth_transaction_pool::TransactionPool;
 use reth_trie_db::MerklePatriciaTrie;
-
-/// Storage implementation for Optimism.
-pub type OpStorage = EthStorage<OpTransactionSigned>;
 
 /// Type configuration for a regular Optimism node.
 #[derive(Debug, Default, Clone)]
@@ -142,14 +139,7 @@ impl FraxtalNode {
 
 impl<N> Node<N> for FraxtalNode
 where
-    N: FullNodeTypes<
-        Types: NodeTypes<
-            Payload = OpEngineTypes,
-            ChainSpec: OpHardforks + Hardforks,
-            Primitives = OpPrimitives,
-            Storage = OpStorage,
-        >,
-    >,
+    N: FullNodeTypes<Types: OpFullNodeTypes + OpNodeTypes>,
 {
     type ComponentsBuilder = ComponentsBuilder<
         N,
@@ -178,6 +168,7 @@ where
             .with_da_config(self.da_config.clone())
             .with_enable_tx_conditional(self.args.enable_tx_conditional)
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
+            .with_historical_rpc(self.args.historical_rpc.clone())
             .build()
     }
 }

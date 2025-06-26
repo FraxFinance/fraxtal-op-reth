@@ -64,7 +64,8 @@ where
     /// Creates a new [`OpBlockExecutor`].
     pub fn new(evm: E, ctx: OpBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
-            is_regolith: spec.is_regolith_active_at_timestamp(evm.block().timestamp),
+            is_regolith: spec
+                .is_regolith_active_at_timestamp(evm.block().timestamp.saturating_to()),
             evm,
             system_caller: SystemCaller::new(spec.clone()),
             spec,
@@ -94,7 +95,7 @@ where
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag = self
             .spec
-            .is_spurious_dragon_active_at_block(self.evm.block().number);
+            .is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
         self.system_caller
@@ -106,16 +107,28 @@ where
         // blocks will always have at least a single transaction in them (the L1 info transaction),
         // so we can safely assume that this will always be triggered upon the transition and that
         // the above check for empty blocks will never be hit on OP chains.
-        ensure_create2_deployer(&self.spec, self.evm.block().timestamp, self.evm.db_mut())
-            .map_err(BlockExecutionError::other)?;
+        ensure_create2_deployer(
+            &self.spec,
+            self.evm.block().timestamp.saturating_to(),
+            self.evm.db_mut(),
+        )
+        .map_err(BlockExecutionError::other)?;
 
         // Ensure that during the granite hard fork we migrate frax to frxUSD and sfrax to sfrxUSD
-        granite::migrate_frxusd(&self.spec, self.evm.block().timestamp, self.evm.db_mut())
-            .map_err(BlockExecutionError::other)?;
+        granite::migrate_frxusd(
+            &self.spec,
+            self.evm.block().timestamp.saturating_to(),
+            self.evm.db_mut(),
+        )
+        .map_err(BlockExecutionError::other)?;
 
         // Ensure that during the holocene hard fork we run the frax holocene migration
-        holocene::migrate_frax_holocene(&self.spec, self.evm.block().timestamp, self.evm.db_mut())
-            .map_err(BlockExecutionError::other)?;
+        holocene::migrate_frax_holocene(
+            &self.spec,
+            self.evm.block().timestamp.saturating_to(),
+            self.evm.db_mut(),
+        )
+        .map_err(BlockExecutionError::other)?;
 
         Ok(())
     }
@@ -203,9 +216,9 @@ where
                             // this is only set for post-Canyon deposit
                             // transactions.
                             deposit_receipt_version: (is_deposit
-                                && self
-                                    .spec
-                                    .is_canyon_active_at_timestamp(self.evm.block().timestamp))
+                                && self.spec.is_canyon_active_at_timestamp(
+                                    self.evm.block().timestamp.saturating_to(),
+                                ))
                             .then_some(1),
                         })
                 }
