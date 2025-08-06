@@ -34,7 +34,7 @@ EF_TESTS_DIR := ./testing/ef-tests/ethereum-tests
 DOCKER_IMAGE_NAME ?= ghcr.io/fraxfinance/fraxtal-op-reth
 
 # Features in bin/fraxtal-op-reth binary crate
-BIN_OTHER_FEATURES := asm-keccak jemalloc jemalloc-prof min-error-logs min-warn-logs min-info-logs min-debug-logs min-trace-logs
+BIN_OTHER_FEATURES := asm-keccak jemalloc min-error-logs min-warn-logs min-info-logs min-debug-logs min-trace-logs
 
 ##@ Help
 
@@ -59,8 +59,8 @@ install-op: ## Build and install the op-reth binary under `~/.cargo/bin`.
 		$(CARGO_INSTALL_EXTRA_FLAGS)
 
 .PHONY: build
-build: ## Build the reth binary into `target` directory.
-	cargo build --bin reth --features "$(FEATURES)" --profile "$(PROFILE)"
+build: ## Build the fraxtal-op-reth binary into `target` directory.
+	cargo build --bin fraxtal-op-reth --features "$(FEATURES)" --profile "$(PROFILE)"
 
 SOURCE_DATE_EPOCH ?= $(shell git log -1 --pretty=%ct)
 .PHONY: reproducible
@@ -73,8 +73,8 @@ reproducible: ## Build the reth binary into `target` directory with reproducible
 	cargo build --bin reth --features "$(FEATURES)" --profile "reproducible" --locked --target x86_64-unknown-linux-gnu
 
 .PHONY: build-debug
-build-debug: ## Build the reth binary into `target/debug` directory.
-	cargo build --bin reth --features "$(FEATURES)"
+build-debug: ## Build the fraxtal-op-reth binary into `target/debug` directory.
+	cargo build --bin fraxtal-op-reth --features "$(FEATURES)"
 
 # Builds the reth binary natively.
 build-native-%:
@@ -141,8 +141,8 @@ build-release-tarballs: ## Create a series of `.tar.gz` files in the BIN_DIR dir
 
 ##@ Test
 
-UNIT_TEST_ARGS := --locked --workspace --features 'jemalloc-prof' -E 'kind(lib)' -E 'kind(bin)' -E 'kind(proc-macro)'
-UNIT_TEST_ARGS_OP := --locked --workspace --features 'jemalloc-prof,optimism' -E 'kind(lib)' -E 'kind(bin)' -E 'kind(proc-macro)'
+UNIT_TEST_ARGS := --locked --workspace --features 'jemalloc' -E 'kind(lib)' -E 'kind(bin)' -E 'kind(proc-macro)'
+UNIT_TEST_ARGS_OP := --locked --workspace --features 'jemalloc,optimism' -E 'kind(lib)' -E 'kind(bin)' -E 'kind(proc-macro)'
 COV_FILE := lcov.info
 
 .PHONY: test-unit
@@ -264,15 +264,15 @@ db-tools: ## Compile MDBX debugging tools.
 .PHONY: update-book-cli
 update-book-cli: build-debug ## Update book cli documentation.
 	@echo "Updating book cli doc..."
-	@./book/cli/update.sh $(CARGO_TARGET_DIR)/debug/reth
+	@./book/cli/update.sh $(CARGO_TARGET_DIR)/debug/fraxtal-op-reth
 
 .PHONY: maxperf
-maxperf: ## Builds `reth` with the most aggressive optimisations.
-	RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc,asm-keccak
+maxperf: ## Builds `fraxtal-op-reth` with the most aggressive optimisations.
+	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features jemalloc,asm-keccak
 
 .PHONY: maxperf-no-asm
-maxperf-no-asm: ## Builds `reth` with the most aggressive optimisations, minus the "asm-keccak" feature.
-	RUSTFLAGS="-C target-cpu=native" cargo build --profile maxperf --features jemalloc
+maxperf-no-asm: ## Builds `fraxtal-op-reth` with the most aggressive optimisations, minus the "asm-keccak" feature.
+	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features jemalloc
 
 
 fmt:
@@ -286,7 +286,7 @@ lint-reth:
 	--examples \
 	--tests \
 	--benches \
-	--features "ethereum $(BIN_OTHER_FEATURES)" \
+	--features "optimism $(BIN_OTHER_FEATURES)" \
 	-- -D warnings
 
 lint-other-targets:
@@ -311,28 +311,27 @@ ensure-codespell:
 lint:
 	make fmt && \
 	make lint-reth && \
-	make lint-op-reth && \
 	make lint-other-targets && \
 	make lint-codespell
 
 fix-lint-reth:
 	cargo +nightly clippy \
 	--workspace \
-	--bin "reth" \
+	--bin "fraxtal-op-reth" \
 	--lib \
 	--examples \
 	--tests \
 	--benches \
-	--features "ethereum $(BIN_OTHER_FEATURES)" \
+	--features "optimism $(BIN_OTHER_FEATURES)" \
 	--fix \
 	--allow-staged \
 	--allow-dirty \
 	-- -D warnings
 
-fix-lint-op-reth:
+fix-lint-fraxtal-op-reth:
 	cargo +nightly clippy \
 	--workspace \
-	--bin "op-reth" \
+	--bin "fraxtal-op-reth" \
 	--lib \
 	--examples \
 	--tests \
@@ -358,7 +357,6 @@ fix-lint-other-targets:
 
 fix-lint:
 	make fix-lint-reth && \
-	make fix-lint-op-reth && \
 	make fix-lint-other-targets && \
 	make fmt
 
@@ -372,20 +370,20 @@ rustdocs: ## Runs `cargo docs` to generate the Rust documents in the `target/doc
 	cargo +nightly docs \
 	--document-private-items
 
-test-reth:
+test-fraxtal-op-reth:
 	cargo test \
 	--workspace \
-	--bin "reth" \
+	--bin "fraxtal-op-reth" \
 	--lib \
 	--examples \
 	--tests \
 	--benches \
-	--features "ethereum $(BIN_OTHER_FEATURES)"
+	--features "optimism $(BIN_OTHER_FEATURES)"
 
 test-op-reth:
 	cargo test \
 	--workspace \
-	--bin "op-reth" \
+	--bin "fraxtal-op-reth" \
 	--lib --examples \
 	--tests \
 	--benches \
@@ -401,19 +399,16 @@ test-other-targets:
 	--all-features
 
 test-doc:
-	cargo test --doc --workspace --features "ethereum"
 	cargo test --doc --workspace --features "optimism"
 
 test:
-	make test-reth && \
-	make test-op-reth && \
+	make test-fraxtal-op-reth && \
 	make test-doc && \
 	make test-other-targets
 
 pr:
 	make lint && \
-	make update-book-cli && \
-	cargo docs --document-private-items && \
+	cargo doc --document-private-items && \
 	make test
 
 check-features:
