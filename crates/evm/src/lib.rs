@@ -12,7 +12,6 @@ use op_revm::{OpSpecId, OpTransaction};
 use reth_chainspec::EthChainSpec;
 use reth_evm::{ConfigureEvm, EvmEnv};
 use reth_optimism_chainspec::OpChainSpec;
-use reth_optimism_consensus::next_block_base_fee;
 use reth_optimism_evm::{
     revm_spec, revm_spec_by_timestamp_after_bedrock, OpBlockAssembler, OpNextBlockEnvAttributes,
     OpRethReceiptBuilder,
@@ -81,7 +80,7 @@ impl<ChainSpec: OpHardforks, N: NodePrimitives, R> FraxtalEvmConfig<ChainSpec, N
 
 impl<ChainSpec, N, R> ConfigureEvm for FraxtalEvmConfig<ChainSpec, N, R>
 where
-    ChainSpec: EthChainSpec + OpHardforks,
+    ChainSpec: EthChainSpec<Header = Header> + OpHardforks,
     N: NodePrimitives<
         Receipt = R::Receipt,
         SignedTx = R::Transaction,
@@ -106,7 +105,6 @@ where
     fn block_assembler(&self) -> &Self::BlockAssembler {
         &self.block_assembler
     }
-
     fn evm_env(&self, header: &Header) -> EvmEnv<OpSpecId> {
         let spec = revm_spec(self.chain_spec(), header);
 
@@ -119,7 +117,7 @@ where
             .is_enabled_in(SpecId::CANCUN)
             .then_some(BlobExcessGasAndPrice {
                 excess_blob_gas: 0,
-                blob_gasprice: 0,
+                blob_gasprice: 1,
             });
 
         let block_env = BlockEnv {
@@ -165,7 +163,7 @@ where
             .is_enabled_in(SpecId::CANCUN)
             .then_some(BlobExcessGasAndPrice {
                 excess_blob_gas: 0,
-                blob_gasprice: 0,
+                blob_gasprice: 1,
             });
 
         let block_env = BlockEnv {
@@ -176,7 +174,10 @@ where
             prevrandao: Some(attributes.prev_randao),
             gas_limit: attributes.gas_limit,
             // calculate basefee based on parent block's gas usage
-            basefee: next_block_base_fee(self.chain_spec(), parent, attributes.timestamp)?,
+            basefee: self
+                .chain_spec()
+                .next_block_base_fee(parent, attributes.timestamp)
+                .unwrap_or_default(),
             // calculate excess gas based on parent block's blob gas usage
             blob_excess_gas_and_price,
         };

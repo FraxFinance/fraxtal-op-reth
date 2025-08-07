@@ -28,7 +28,7 @@ where
     if chain_spec.is_holocene_active_at_timestamp(timestamp)
         && !chain_spec.is_holocene_active_at_timestamp(timestamp.saturating_sub(2))
     {
-        info!(target: "evm", "Forcing frax upgrades on Holocne transition");
+        info!(target: "evm", "Forcing frax upgrades on Holocene transition");
 
         let (proxy_migrations, bytecode_migrations, storage_migrations) =
             match chain_spec.chain().id() {

@@ -1,7 +1,12 @@
+use std::sync::Arc;
+
 use fraxtal_evm::FraxtalEvmConfig;
 use reth_chainspec::ChainSpecProvider;
+use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_evm::ConfigureEvm;
-use reth_node_api::{FullNodeComponents, PayloadTypes, PrimitivesTy, TxTy};
+use reth_node_api::{
+    FullNodeComponents, PayloadAttributesBuilder, PayloadTypes, PrimitivesTy, TxTy,
+};
 use reth_node_builder::{
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
@@ -19,7 +24,8 @@ use reth_optimism_node::{
         OpPoolBuilder,
     },
     txpool::OpPooledTx,
-    OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpPayloadAttributes, OpStorage,
+    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpPayloadAttributes,
+    OpStorage,
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
@@ -29,6 +35,7 @@ use reth_optimism_payload_builder::{
 use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
 use reth_provider::providers::ProviderFactoryBuilder;
+use reth_rpc_api::eth::RpcTypes;
 use reth_transaction_pool::TransactionPool;
 use reth_trie_db::MerklePatriciaTrie;
 
@@ -102,6 +109,17 @@ impl FraxtalNode {
             .consensus(OpConsensusBuilder::default())
     }
 
+    /// Returns [`OpAddOnsBuilder`] with configured arguments.
+    pub fn add_ons_builder<NetworkT: RpcTypes>(&self) -> OpAddOnsBuilder<NetworkT> {
+        OpAddOnsBuilder::default()
+            .with_sequencer(self.args.sequencer.clone())
+            .with_sequencer_headers(self.args.sequencer_headers.clone())
+            .with_da_config(self.da_config.clone())
+            .with_enable_tx_conditional(self.args.enable_tx_conditional)
+            .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
+            .with_historical_rpc(self.args.historical_rpc.clone())
+    }
+
     /// Instantiates the [`ProviderFactoryBuilder`] for an opstack node.
     ///
     /// # Open a Providerfactory in read-only mode from a datadir
@@ -162,14 +180,7 @@ where
     }
 
     fn add_ons(&self) -> Self::AddOns {
-        Self::AddOns::builder()
-            .with_sequencer(self.args.sequencer.clone())
-            .with_sequencer_headers(self.args.sequencer_headers.clone())
-            .with_da_config(self.da_config.clone())
-            .with_enable_tx_conditional(self.args.enable_tx_conditional)
-            .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
-            .with_historical_rpc(self.args.historical_rpc.clone())
-            .build()
+        self.add_ons_builder().build()
     }
 }
 
@@ -181,6 +192,12 @@ where
 
     fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_node_api::BlockTy<Self> {
         rpc_block.into_consensus()
+    }
+
+    fn local_payload_attributes_builder(
+        chain_spec: &Self::ChainSpec,
+    ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
+        LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
     }
 }
 

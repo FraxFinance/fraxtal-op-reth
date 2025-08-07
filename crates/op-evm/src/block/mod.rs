@@ -32,6 +32,7 @@ use revm::{
 mod canyon;
 mod granite;
 mod holocene;
+mod isthmus;
 
 /// Block executor for Optimism.
 #[derive(Debug)]
@@ -124,6 +125,14 @@ where
 
         // Ensure that during the holocene hard fork we run the frax holocene migration
         holocene::migrate_frax_holocene(
+            &self.spec,
+            self.evm.block().timestamp.saturating_to(),
+            self.evm.db_mut(),
+        )
+        .map_err(BlockExecutionError::other)?;
+
+        // Ensure that during the isthmus hard fork we run the frax isthmus migration
+        isthmus::migrate_frax_isthmus(
             &self.spec,
             self.evm.block().timestamp.saturating_to(),
             self.evm.db_mut(),
