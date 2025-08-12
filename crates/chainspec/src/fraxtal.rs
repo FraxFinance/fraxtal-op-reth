@@ -115,5 +115,13 @@ static FRAXTAL_MAINNET_HARDFORKS: LazyLock<ChainHardforks> = LazyLock::new(|| {
             OpHardfork::Holocene.boxed(),
             ForkCondition::Timestamp(1744052401),
         ),
+        (
+            EthereumHardfork::Prague.boxed(),
+            ForkCondition::Timestamp(1755716401),
+        ),
+        (
+            OpHardfork::Isthmus.boxed(),
+            ForkCondition::Timestamp(1755716401),
+        ),
     ])
 });
