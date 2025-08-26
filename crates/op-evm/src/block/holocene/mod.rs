@@ -32,8 +32,8 @@ where
 
         let (proxy_migrations, bytecode_migrations, storage_migrations) =
             match chain_spec.chain().id() {
-                2521 => (Some(constants::TESTNET_TOKENS_ADDRESSES), None, None),
-                2522 => (Some(constants::DEVNET_TOKENS_ADDRESSES), None, None),
+                2521 => (Some(constants::DEVNET_TOKENS_ADDRESSES), None, None),
+                2522 => (Some(constants::TESTNET_TOKENS_ADDRESSES), None, None),
                 _ => (
                     Some(constants::MAINNET_TOKENS_ADDRESSES),
                     Some(constants::MAINNET_NAMING_BYTECODE_CHANGES),
