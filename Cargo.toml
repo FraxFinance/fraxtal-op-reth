@@ -29,6 +29,7 @@ reth-engine-local = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0
 reth-ethereum-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-execution-types = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+reth-exex = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-optimism-chainspec = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
@@ -51,6 +52,9 @@ reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.6.0" }
+
+base-reth-flashblocks-rpc = { git = "https://github.com/base/node-reth", rev = "237fac3" }
+url = "2.5"
 
 # eth
 alloy-chains = { version = "0.2.5", default-features = false }
@@ -83,6 +87,11 @@ tracing = { version = "0.1.0", default-features = false }
 eyre = "0.6"
 thiserror = { version = "2.0.0", default-features = false }
 derive_more = { version = "2", default-features = false, features = ["full"] }
+
+# async
+futures = "0.3"
+futures-util = "0.3"
+once_cell = "1.19"
 
 [profile.dev]
 # https://davidlattimore.github.io/posts/2024/02/04/speeding-up-the-rust-edit-build-run-cycle.html
