@@ -15,6 +15,7 @@ fraxtal-node.workspace = true
 reth-cli.workspace = true
 reth-chainspec.workspace = true
 reth-ethereum-forks.workspace = true
+reth-exex.workspace = true
 reth-node-builder.workspace = true
 reth-cli-util.workspace = true
 reth-optimism-cli.workspace = true
@@ -28,6 +29,8 @@ reth-optimism-payload-builder.workspace = true
 reth-optimism-primitives.workspace = true
 reth-optimism-forks.workspace = true
 
+base-reth-flashblocks-rpc.workspace = true
+
 alloy-chains.workspace = true
 alloy-primitives.workspace = true
 
@@ -37,6 +40,9 @@ serde_json.workspace = true
 clap.workspace = true
 tracing.workspace = true
 eyre.workspace = true
+url.workspace = true
+futures-util.workspace = true
+once_cell.workspace = true
 
 [[bin]]
 name = "fraxtal-op-reth"
