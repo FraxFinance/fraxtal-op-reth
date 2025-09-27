@@ -17,7 +17,7 @@ use reth_node_builder::{
     BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
 };
 use reth_optimism_chainspec::OpChainSpec;
-use reth_optimism_evm::{OpNextBlockEnvAttributes, OpRethReceiptBuilder};
+use reth_optimism_evm::OpRethReceiptBuilder;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_node::{
     args::RollupArgs,
@@ -26,13 +26,12 @@ use reth_optimism_node::{
         OpPoolBuilder,
     },
     txpool::OpPooledTx,
-    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpPayloadAttributes,
-    OpStorage,
+    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpStorage,
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig},
-    OpAttributes, OpBuiltPayload, OpPayloadBuilderAttributes, OpPayloadPrimitives,
+    OpAttributes, OpBuiltPayload, OpPayloadPrimitives,
 };
 use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
