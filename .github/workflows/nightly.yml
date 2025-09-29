@@ -3,7 +3,10 @@
 
 name: nightly
 
-on: push
+on:
+  push:
+    branches:
+      - "*"
 
 env:
   REPO_NAME: ${{ github.repository_owner }}/fraxtal-op-reth
