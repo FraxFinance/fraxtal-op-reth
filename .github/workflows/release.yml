@@ -16,12 +16,9 @@ env:
   DOCKER_USERNAME: ${{ github.actor }}
 
 jobs:
-  build:
-    name: build and push
-    runs-on: ubuntu-20.04
-    permissions:
-      packages: write
-      contents: read
+  build-x86:
+    name: Build x86 binary
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -29,14 +26,72 @@ jobs:
         with:
           cache-on-failure: true
       - uses: taiki-e/install-action@cross
-      - name: Log in to Docker
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${DOCKER_USERNAME} --password-stdin
       - name: Set up Docker builder
         run: |
           docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
           docker buildx create --use --name cross-builder
-      - name: Build and push fraxtal-op-reth image, tag as "latest"
-        run: make PROFILE=maxperf docker-build-push-latest
-      - name: Build and push fraxtal-op-reth image
-        run: make PROFILE=maxperf docker-build-push
+      - name: Build
+        run: make PROFILE=maxperf build-native-x86_64-unknown-linux-gnu
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fraxtal-op-reth-x86
+          path: target/x86_64-unknown-linux-gnu/maxperf/fraxtal-op-reth
+          retention-days: 1
+  build-arm:
+    name: Build arm binary
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - uses: taiki-e/install-action@cross
+      - name: Set up Docker builder
+        run: |
+          docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
+          docker buildx create --use --name cross-builder
+      - name: Build
+        run: make PROFILE=maxperf build-native-aarch64-unknown-linux-gnu
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fraxtal-op-reth-arm
+          path: target/aarch64-unknown-linux-gnu/maxperf/fraxtal-op-reth
+          retention-days: 1
+
+  build-docker:
+    name: build and push docker image
+    needs: [build-x86, build-arm]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${DOCKER_USERNAME} --password-stdin
+      - name: Create artifacts dirs
+        run: mkdir -p dist/bin/{amd64,arm64}
+      - name: Download x86 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fraxtal-op-reth-x86
+          path: dist/bin/amd64/fraxtal-op-reth
+      - name: Download arm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fraxtal-op-reth-arm
+          path: dist/bin/arm64/fraxtal-op-reth
+      - name: Set up Docker builder
+        run: docker buildx create --use --name fraxtal
+      - name: Build and push fraxtal-op-reth nightly image
+        run: |
+          docker buildx build --file ./Dockerfile.cross . \
+            --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/fraxfinance/fraxtal-op-reth:${{ github.ref_name }} \
+            --tag ghcr.io/fraxfinance/fraxtal-op-reth:latest \
+            --provenance=false \
+            --push
