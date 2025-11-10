@@ -23,7 +23,7 @@ use canyon::ensure_create2_deployer;
 use op_alloy_consensus::OpDepositReceipt;
 use op_revm::transaction::deposit::DEPOSIT_TRANSACTION_TYPE;
 use reth_chainspec::EthChainSpec;
-use revm::{context::result::ResultAndState, database::State, DatabaseCommit, Inspector};
+use revm::{context::{result::ResultAndState, BlockEnv}, database::State, DatabaseCommit, Inspector};
 
 mod canyon;
 mod granite;
@@ -53,7 +53,7 @@ pub struct FraxtalBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
 
 impl<E, R, Spec> FraxtalBlockExecutor<E, R, Spec>
 where
-    E: Evm,
+    E: Evm<BlockEnv = BlockEnv>,
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
@@ -78,6 +78,7 @@ where
     DB: Database + 'db,
     E: Evm<
         DB = &'db mut State<DB>,
+        BlockEnv = BlockEnv,
         Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
     >,
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
@@ -266,6 +267,7 @@ where
                 receipts: self.receipts,
                 requests: Default::default(),
                 gas_used,
+                blob_gas_used: 0,
             },
         ))
     }
@@ -329,7 +331,7 @@ impl<R, Spec, EvmF> BlockExecutorFactory for FraxtalBlockExecutorFactory<R, Spec
 where
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: OpHardforks + EthChainSpec,
-    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
+    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>, BlockEnv = BlockEnv>,
     Self: 'static,
 {
     type EvmFactory = EvmF;

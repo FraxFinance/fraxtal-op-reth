@@ -90,6 +90,7 @@ where
     type Spec = OpSpecId;
     type Precompiles = P;
     type Inspector = I;
+    type BlockEnv = BlockEnv;
 
     fn block(&self) -> &BlockEnv {
         &self.block
@@ -165,6 +166,7 @@ impl EvmFactory for FraxtalEvmFactory {
     type HaltReason = OpHaltReason;
     type Spec = OpSpecId;
     type Precompiles = PrecompilesMap;
+    type BlockEnv = BlockEnv;
 
     fn create_evm<DB: Database>(
         &self,

@@ -30,7 +30,7 @@ use reth_optimism_node::{
 };
 use reth_optimism_payload_builder::{
     builder::OpPayloadTransactions,
-    config::{OpBuilderConfig, OpDAConfig},
+    config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
     OpAttributes, OpBuiltPayload, OpPayloadPrimitives,
 };
 use reth_optimism_primitives::OpPrimitives;
@@ -52,6 +52,10 @@ pub struct FraxtalNode {
     ///
     /// By default no throttling is applied.
     pub da_config: OpDAConfig,
+    /// Gas limit configuration for the OP builder.
+    /// Used to control the gas limit of the blocks produced by the OP builder.(configured by the
+    /// batcher via the `miner_` api)
+    pub gas_limit_config: OpGasLimitConfig,
 }
 
 /// A [`ComponentsBuilder`] with its generic arguments set to a stack of Optimism specific builders.
@@ -70,12 +74,19 @@ impl FraxtalNode {
         Self {
             args,
             da_config: OpDAConfig::default(),
+            gas_limit_config: OpGasLimitConfig::default(),
         }
     }
 
     /// Configure the data availability configuration for the OP builder.
     pub fn with_da_config(mut self, da_config: OpDAConfig) -> Self {
         self.da_config = da_config;
+        self
+    }
+
+    /// Configure the gas limit configuration for the OP builder.
+    pub fn with_gas_limit_config(mut self, gas_limit_config: OpGasLimitConfig) -> Self {
+        self.gas_limit_config = gas_limit_config;
         self
     }
 
@@ -103,7 +114,8 @@ impl FraxtalNode {
             .executor(FraxtalExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 FraxtalPayloadBuilder::new(compute_pending_block)
-                    .with_da_config(self.da_config.clone()),
+                    .with_da_config(self.da_config.clone())
+                    .with_gas_limit_config(self.gas_limit_config.clone()),
             ))
             .network(OpNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
             .consensus(OpConsensusBuilder::default())
@@ -115,6 +127,7 @@ impl FraxtalNode {
             .with_sequencer(self.args.sequencer.clone())
             .with_sequencer_headers(self.args.sequencer_headers.clone())
             .with_da_config(self.da_config.clone())
+            .with_gas_limit_config(self.gas_limit_config.clone())
             .with_enable_tx_conditional(self.args.enable_tx_conditional)
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
             .with_historical_rpc(self.args.historical_rpc.clone())
@@ -249,6 +262,9 @@ pub struct FraxtalPayloadBuilder<Txs = ()> {
     /// This data availability configuration specifies constraints for the payload builder
     /// when assembling payloads
     pub da_config: OpDAConfig,
+    /// Gas limit configuration for the OP builder.
+    /// Used to control the gas limit of the blocks produced by the OP builder.
+    pub gas_limit_config: OpGasLimitConfig,
 }
 
 impl FraxtalPayloadBuilder {
@@ -259,12 +275,19 @@ impl FraxtalPayloadBuilder {
             compute_pending_block,
             best_transactions: (),
             da_config: OpDAConfig::default(),
+            gas_limit_config: OpGasLimitConfig::default(),
         }
     }
 
     /// Configure the data availability configuration for the OP payload builder.
     pub fn with_da_config(mut self, da_config: OpDAConfig) -> Self {
         self.da_config = da_config;
+        self
+    }
+
+    /// Configure the gas limit configuration for the OP builder.
+    pub fn with_gas_limit_config(mut self, gas_limit_config: OpGasLimitConfig) -> Self {
+        self.gas_limit_config = gas_limit_config;
         self
     }
 }
@@ -276,12 +299,14 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
         let Self {
             compute_pending_block,
             da_config,
+            gas_limit_config,
             ..
         } = self;
         FraxtalPayloadBuilder {
             compute_pending_block,
             best_transactions,
             da_config,
+            gas_limit_config,
         }
     }
 }
@@ -326,6 +351,7 @@ where
             evm_config,
             OpBuilderConfig {
                 da_config: self.da_config.clone(),
+                gas_limit_config: self.gas_limit_config.clone(),
             },
         )
         .with_transactions(self.best_transactions.clone())
