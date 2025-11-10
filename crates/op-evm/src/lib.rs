@@ -40,7 +40,7 @@ impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
     }
 
     /// Provides a mutable reference to the EVM context.
-    pub fn ctx_mut(&mut self) -> &mut OpContext<DB> {
+    pub const fn ctx_mut(&mut self) -> &mut OpContext<DB> {
         &mut self.inner.0.ctx
     }
 }

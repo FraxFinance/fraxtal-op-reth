@@ -131,7 +131,7 @@ where
         &self.block_assembler
     }
 
-    fn evm_env(&self, header: &Header) -> EvmEnv<OpSpecId> {
+    fn evm_env(&self, header: &Header) -> Result<EvmEnv<OpSpecId>, Self::Error> {
         let spec = revm_spec(self.chain_spec(), header);
 
         let cfg_env = CfgEnv::new()
@@ -166,7 +166,7 @@ where
             blob_excess_gas_and_price,
         };
 
-        EvmEnv { cfg_env, block_env }
+        Ok(EvmEnv { cfg_env, block_env })
     }
 
     fn next_evm_env(
@@ -211,24 +211,27 @@ where
         Ok(EvmEnv { cfg_env, block_env })
     }
 
-    fn context_for_block(&self, block: &'_ SealedBlock<N::Block>) -> OpBlockExecutionCtx {
-        OpBlockExecutionCtx {
+    fn context_for_block(
+        &self,
+        block: &'_ SealedBlock<N::Block>,
+    ) -> Result<OpBlockExecutionCtx, Self::Error> {
+        Ok(OpBlockExecutionCtx {
             parent_hash: block.header().parent_hash(),
             parent_beacon_block_root: block.header().parent_beacon_block_root(),
             extra_data: block.header().extra_data().clone(),
-        }
+        })
     }
 
     fn context_for_next_block(
         &self,
         parent: &SealedHeader<N::BlockHeader>,
         attributes: Self::NextBlockEnvCtx,
-    ) -> OpBlockExecutionCtx {
-        OpBlockExecutionCtx {
+    ) -> Result<OpBlockExecutionCtx, Self::Error> {
+        Ok(OpBlockExecutionCtx {
             parent_hash: parent.hash(),
             parent_beacon_block_root: attributes.parent_beacon_block_root,
             extra_data: attributes.extra_data,
-        }
+        })
     }
 }
 
