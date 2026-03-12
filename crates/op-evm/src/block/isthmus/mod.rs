@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use alloy_evm::Database;
 use alloy_op_hardforks::OpHardforks;
-use alloy_primitives::{B256, U256};
+use alloy_primitives::{B256, KECCAK256_EMPTY, U256};
 use reth_chainspec::EthChainSpec;
 use revm::{
     DatabaseCommit,
@@ -46,8 +46,7 @@ where
             implementation_acc.code_hash = implementation_acc
                 .code
                 .as_ref()
-                .unwrap_or(&Bytecode::new())
-                .hash_slow();
+                .map_or(KECCAK256_EMPTY, |c| c.hash_slow());
             let mut implementation_revm_account: Account = implementation_acc.into();
             implementation_revm_account.mark_touch();
 
@@ -89,4 +88,3 @@ where
     }
     Ok(())
 }
-

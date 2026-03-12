@@ -1,22 +1,22 @@
 extern crate alloc;
 
-use alloy_evm::{precompiles::PrecompilesMap, Database, Evm, EvmEnv, EvmFactory};
+use alloy_evm::{Database, Evm, EvmEnv, EvmFactory, precompiles::PrecompilesMap};
 use alloy_primitives::{Address, Bytes};
 use core::{
     fmt::Debug,
     ops::{Deref, DerefMut},
 };
 use op_revm::{
-    precompiles::OpPrecompiles, DefaultOp, OpBuilder, OpContext, OpHaltReason, OpSpecId,
-    OpTransaction, OpTransactionError,
+    DefaultOp, OpBuilder, OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError,
+    precompiles::OpPrecompiles,
 };
 use revm::{
+    Context, ExecuteEvm, InspectEvm, Inspector, SystemCallEvm,
     context::{BlockEnv, TxEnv},
     context_interface::result::{EVMError, ResultAndState},
-    handler::{instructions::EthInstructions, PrecompileProvider},
+    handler::{PrecompileProvider, instructions::EthInstructions},
     inspector::NoOpInspector,
-    interpreter::{interpreter::EthInterpreter, InterpreterResult},
-    Context, ExecuteEvm, InspectEvm, Inspector, SystemCallEvm,
+    interpreter::{InterpreterResult, interpreter::EthInterpreter},
 };
 
 pub mod block;

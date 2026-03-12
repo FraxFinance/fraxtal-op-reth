@@ -1,4 +1,4 @@
-use alloy_primitives::{address, b256, Address, B256};
+use alloy_primitives::{Address, B256, address, b256};
 
 pub(super) const MAINNET_ORACLES_ADDRESSES: &[Address] = &[
     address!("0xf750636e1df115e3b334ed06e5b45c375107fc60"),

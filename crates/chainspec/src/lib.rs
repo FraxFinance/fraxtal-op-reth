@@ -1,6 +1,6 @@
 use fraxtal::FRAXTAL_MAINNET;
 use fraxtal_hoodi_testnet::FRAXTAL_HOODI_TESTNET;
-use reth_cli::chainspec::{parse_genesis, ChainSpecParser};
+use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 use reth_optimism_chainspec::OpChainSpec;
 use std::sync::Arc;
 

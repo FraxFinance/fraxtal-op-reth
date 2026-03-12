@@ -15,8 +15,8 @@ use alloy_evm::{
     eth::{EthTxResult, receipt_builder::ReceiptBuilderCtx},
 };
 use alloy_op_evm::{
-    block::{OpTxEnv, receipt_builder::OpReceiptBuilder, OpAlloyReceiptBuilder},
     OpBlockExecutionCtx,
+    block::{OpAlloyReceiptBuilder, OpTxEnv, receipt_builder::OpReceiptBuilder},
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
 use alloy_primitives::Address;
@@ -187,11 +187,12 @@ where
 
     fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
         let FraxtalTxResult {
-            inner: EthTxResult {
-                result: ResultAndState { result, state },
-                tx_type,
-                ..
-            },
+            inner:
+                EthTxResult {
+                    result: ResultAndState { result, state },
+                    tx_type,
+                    ..
+                },
             is_deposit,
             sender,
         } = output;
@@ -359,7 +360,9 @@ impl<R, Spec, EvmF> BlockExecutorFactory for FraxtalBlockExecutorFactory<R, Spec
 where
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: OpHardforks + EthChainSpec,
-    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv>,
+    EvmF: EvmFactory<
+        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
+    >,
     Self: 'static,
 {
     type EvmFactory = EvmF;

@@ -9,29 +9,29 @@ use reth_node_api::{
     PrimitivesTy, TxTy,
 };
 use reth_node_builder::{
+    BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
     components::{
         BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
     },
     node::{FullNodeTypes, NodeTypes},
     rpc::BasicEngineValidatorBuilder,
-    BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
 };
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::OpRethReceiptBuilder;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_node::{
+    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpStorage,
     args::RollupArgs,
     node::{
         OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNetworkBuilder, OpNodeTypes,
         OpPoolBuilder,
     },
     txpool::OpPooledTx,
-    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpStorage,
 };
 use reth_optimism_payload_builder::{
+    OpAttributes, OpBuiltPayload, OpPayloadPrimitives,
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
-    OpAttributes, OpBuiltPayload, OpPayloadPrimitives,
 };
 use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
@@ -315,15 +315,15 @@ impl<Node, Pool, Txs, Evm, Attrs> PayloadBuilderBuilder<Node, Pool, Evm>
     for FraxtalPayloadBuilder<Txs>
 where
     Node: FullNodeTypes<
-        Provider: ChainSpecProvider<ChainSpec: OpHardforks>,
-        Types: NodeTypes<
-            Primitives: OpPayloadPrimitives,
-            Payload: PayloadTypes<
-                BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
-                PayloadBuilderAttributes = Attrs,
+            Provider: ChainSpecProvider<ChainSpec: OpHardforks>,
+            Types: NodeTypes<
+                Primitives: OpPayloadPrimitives,
+                Payload: PayloadTypes<
+                    BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
+                    PayloadBuilderAttributes = Attrs,
+                >,
             >,
         >,
-    >,
     Evm: ConfigureEvm<
             Primitives = PrimitivesTy<Node::Types>,
             NextBlockEnvCtx: BuildNextEnv<
