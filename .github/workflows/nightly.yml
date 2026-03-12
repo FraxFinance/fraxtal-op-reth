@@ -9,8 +9,6 @@ on:
       - "*"
 
 env:
-  REPO_NAME: ${{ github.repository_owner }}/fraxtal-op-reth
-  IMAGE_NAME: ${{ github.repository_owner }}/fraxtal-op-reth
   DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/fraxtal-op-reth
   CARGO_TERM_COLOR: always
   DOCKER_USERNAME: ${{ github.actor }}
@@ -21,15 +19,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@v1
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - uses: taiki-e/install-action@cross
-      - name: Set up Docker builder
-        run: |
-          docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
-          docker buildx create --use --name cross-builder
       - name: Build
         run: make PROFILE=maxperf build-native-x86_64-unknown-linux-gnu
       - name: Upload artifact
@@ -43,15 +37,11 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@v1
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
-      - uses: taiki-e/install-action@cross
-      - name: Set up Docker builder
-        run: |
-          docker run --privileged --rm tonistiigi/binfmt --install arm64,amd64
-          docker buildx create --use --name cross-builder
       - name: Build
         run: make PROFILE=maxperf build-native-aarch64-unknown-linux-gnu
       - name: Upload artifact
@@ -91,6 +81,6 @@ jobs:
         run: |
           docker buildx build --file ./Dockerfile.cross . \
             --platform linux/amd64,linux/arm64 \
-            --tag ghcr.io/fraxfinance/fraxtal-op-reth:${{ github.head_ref || github.ref_name }}-nightly \
+            --tag ${{ env.DOCKER_IMAGE_NAME }}:${{ github.head_ref || github.ref_name }}-nightly \
             --provenance=false \
             --push

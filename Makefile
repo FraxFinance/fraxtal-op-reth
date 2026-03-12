@@ -78,7 +78,7 @@ build-debug: ## Build the fraxtal-op-reth binary into `target/debug` directory.
 
 # Builds the reth binary natively.
 build-native-%:
-	cargo build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
+	cargo build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --locked
 
 # The following commands use `cross` to build a cross-compile.
 #
@@ -268,11 +268,11 @@ update-book-cli: build-debug ## Update book cli documentation.
 
 .PHONY: maxperf
 maxperf: ## Builds `fraxtal-op-reth` with the most aggressive optimisations.
-	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features jemalloc,asm-keccak
+	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features "$(FEATURES)"
 
 .PHONY: maxperf-no-asm
 maxperf-no-asm: ## Builds `fraxtal-op-reth` with the most aggressive optimisations, minus the "asm-keccak" feature.
-	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features jemalloc
+	RUSTFLAGS="-C target-cpu=native" cargo build --bin fraxtal-op-reth --profile maxperf --features "$(filter-out asm-keccak,$(FEATURES))"
 
 
 fmt:
@@ -328,19 +328,7 @@ fix-lint-reth:
 	--allow-dirty \
 	-- -D warnings
 
-fix-lint-fraxtal-op-reth:
-	cargo +nightly clippy \
-	--workspace \
-	--bin "fraxtal-op-reth" \
-	--lib \
-	--examples \
-	--tests \
-	--benches \
-	--features "optimism $(BIN_OTHER_FEATURES)" \
-	--fix \
-	--allow-staged \
-	--allow-dirty \
-	-- -D warnings
+fix-lint-fraxtal-op-reth: fix-lint-reth
 
 fix-lint-other-targets:
 	cargo +nightly clippy \
@@ -380,14 +368,7 @@ test-fraxtal-op-reth:
 	--benches \
 	--features "optimism $(BIN_OTHER_FEATURES)"
 
-test-op-reth:
-	cargo test \
-	--workspace \
-	--bin "fraxtal-op-reth" \
-	--lib --examples \
-	--tests \
-	--benches \
-	--features "optimism $(BIN_OTHER_FEATURES)"
+test-op-reth: test-fraxtal-op-reth
 
 test-other-targets:
 	cargo test \
