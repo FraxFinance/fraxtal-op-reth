@@ -2,33 +2,58 @@
 
 use crate::FraxtalEvmFactory;
 use alloc::{borrow::Cow, boxed::Box, vec::Vec};
-use alloy_consensus::{Eip658Value, Header, Transaction, TxReceipt};
+use alloy_consensus::{Eip658Value, Header, Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::{Encodable2718, Typed2718};
 use alloy_evm::{
+    Database, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, RecoveredTx,
     block::{
-        state_changes::{balance_increment_state, post_block_balance_increments},
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
         BlockExecutorFor, BlockValidationError, ExecutableTx, OnStateHook,
-        StateChangePostBlockSource, StateChangeSource, SystemCaller,
+        StateChangePostBlockSource, StateChangeSource, StateDB, SystemCaller, TxResult,
+        state_changes::{balance_increment_state, post_block_balance_increments},
     },
-    eth::receipt_builder::ReceiptBuilderCtx,
-    Database, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
+    eth::{EthTxResult, receipt_builder::ReceiptBuilderCtx},
 };
 use alloy_op_evm::{
-    block::{receipt_builder::OpReceiptBuilder, OpAlloyReceiptBuilder},
+    block::{OpTxEnv, receipt_builder::OpReceiptBuilder, OpAlloyReceiptBuilder},
     OpBlockExecutionCtx,
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
+use alloy_primitives::Address;
 use canyon::ensure_create2_deployer;
 use op_alloy_consensus::OpDepositReceipt;
 use op_revm::transaction::deposit::DEPOSIT_TRANSACTION_TYPE;
 use reth_chainspec::EthChainSpec;
-use revm::{context::{result::ResultAndState, BlockEnv}, database::State, DatabaseCommit, Inspector};
+use revm::{
+    Database as _, DatabaseCommit, Inspector,
+    context::{Block, result::ResultAndState},
+    database::{DatabaseCommitExt, State},
+};
 
 mod canyon;
 mod granite;
 mod holocene;
 mod isthmus;
+mod utils;
+
+/// The result of executing a Fraxtal OP transaction.
+#[derive(Debug)]
+pub struct FraxtalTxResult<H, T> {
+    /// The inner result of the transaction execution.
+    pub inner: EthTxResult<H, T>,
+    /// Whether the transaction is a deposit transaction.
+    pub is_deposit: bool,
+    /// The sender of the transaction.
+    pub sender: Address,
+}
+
+impl<H, T> TxResult for FraxtalTxResult<H, T> {
+    type HaltReason = H;
+
+    fn result(&self) -> &ResultAndState<Self::HaltReason> {
+        &self.inner.result
+    }
+}
 
 /// Block executor for Optimism.
 #[derive(Debug)]
@@ -53,15 +78,15 @@ pub struct FraxtalBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
 
 impl<E, R, Spec> FraxtalBlockExecutor<E, R, Spec>
 where
-    E: Evm<BlockEnv = BlockEnv>,
+    E: Evm,
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
-    /// Creates a new [`OpBlockExecutor`].
+    /// Creates a new [`FraxtalBlockExecutor`].
     pub fn new(evm: E, ctx: OpBlockExecutionCtx, spec: Spec, receipt_builder: R) -> Self {
         Self {
             is_regolith: spec
-                .is_regolith_active_at_timestamp(evm.block().timestamp.saturating_to()),
+                .is_regolith_active_at_timestamp(evm.block().timestamp().saturating_to()),
             evm,
             system_caller: SystemCaller::new(spec.clone()),
             spec,
@@ -73,26 +98,25 @@ where
     }
 }
 
-impl<'db, DB, E, R, Spec> BlockExecutor for FraxtalBlockExecutor<E, R, Spec>
+impl<E, R, Spec> BlockExecutor for FraxtalBlockExecutor<E, R, Spec>
 where
-    DB: Database + 'db,
     E: Evm<
-        DB = &'db mut State<DB>,
-        BlockEnv = BlockEnv,
-        Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
-    >,
+            DB: Database + DatabaseCommit + StateDB,
+            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
+        >,
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: OpHardforks + EthChainSpec,
 {
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
     type Evm = E;
+    type Result = FraxtalTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         // Set state clear flag if the block is after the Spurious Dragon hardfork.
         let state_clear_flag = self
             .spec
-            .is_spurious_dragon_active_at_block(self.evm.block().number.saturating_to());
+            .is_spurious_dragon_active_at_block(self.evm.block().number().saturating_to());
         self.evm.db_mut().set_state_clear_flag(state_clear_flag);
 
         self.system_caller
@@ -100,40 +124,26 @@ where
         self.system_caller
             .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
 
+        let timestamp: u64 = self.evm.block().timestamp().saturating_to();
+
         // Ensure that the create2deployer is force-deployed at the canyon transition. Optimism
         // blocks will always have at least a single transaction in them (the L1 info transaction),
         // so we can safely assume that this will always be triggered upon the transition and that
         // the above check for empty blocks will never be hit on OP chains.
-        ensure_create2_deployer(
-            &self.spec,
-            self.evm.block().timestamp.saturating_to(),
-            self.evm.db_mut(),
-        )
-        .map_err(BlockExecutionError::other)?;
+        ensure_create2_deployer(&self.spec, timestamp, self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?;
 
         // Ensure that during the granite hard fork we migrate frax to frxUSD and sfrax to sfrxUSD
-        granite::migrate_frxusd(
-            &self.spec,
-            self.evm.block().timestamp.saturating_to(),
-            self.evm.db_mut(),
-        )
-        .map_err(BlockExecutionError::other)?;
+        granite::migrate_frxusd(&self.spec, timestamp, self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?;
 
         // Ensure that during the holocene hard fork we run the frax holocene migration
-        holocene::migrate_frax_holocene(
-            &self.spec,
-            self.evm.block().timestamp.saturating_to(),
-            self.evm.db_mut(),
-        )
-        .map_err(BlockExecutionError::other)?;
+        holocene::migrate_frax_holocene(&self.spec, timestamp, self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?;
 
         // Ensure that during the isthmus hard fork we run the frax isthmus migration
-        isthmus::migrate_frax_isthmus(
-            &self.spec,
-            self.evm.block().timestamp.saturating_to(),
-            self.evm.db_mut(),
-        )
-        .map_err(BlockExecutionError::other)?;
+        isthmus::migrate_frax_isthmus(&self.spec, timestamp, self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?;
 
         Ok(())
     }
@@ -141,12 +151,13 @@ where
     fn execute_transaction_without_commit(
         &mut self,
         tx: impl ExecutableTx<Self>,
-    ) -> Result<ResultAndState<<Self::Evm as Evm>::HaltReason>, BlockExecutionError> {
+    ) -> Result<Self::Result, BlockExecutionError> {
+        let (tx_env, tx) = tx.into_parts();
         let is_deposit = tx.tx().ty() == DEPOSIT_TRANSACTION_TYPE;
 
         // The sum of the transaction's gas limit, Tg, and the gas utilized in this block prior,
         // must be no greater than the block's gasLimit.
-        let block_available_gas = self.evm.block().gas_limit - self.gas_used;
+        let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
         if tx.tx().gas_limit() > block_available_gas && (self.is_regolith || !is_deposit) {
             return Err(
                 BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
@@ -158,19 +169,32 @@ where
         }
 
         // Execute transaction and return the result
-        self.evm.transact(&tx).map_err(|err| {
+        let result = self.evm.transact(tx_env).map_err(|err| {
             let hash = tx.tx().trie_hash();
             BlockExecutionError::evm(err, hash)
+        })?;
+
+        Ok(FraxtalTxResult {
+            inner: EthTxResult {
+                result,
+                blob_gas_used: 0,
+                tx_type: tx.tx().tx_type(),
+            },
+            is_deposit,
+            sender: *tx.signer(),
         })
     }
 
-    fn commit_transaction(
-        &mut self,
-        output: ResultAndState<<Self::Evm as Evm>::HaltReason>,
-        tx: impl ExecutableTx<Self>,
-    ) -> Result<u64, BlockExecutionError> {
-        let ResultAndState { result, state } = output;
-        let is_deposit = tx.tx().ty() == DEPOSIT_TRANSACTION_TYPE;
+    fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
+        let FraxtalTxResult {
+            inner: EthTxResult {
+                result: ResultAndState { result, state },
+                tx_type,
+                ..
+            },
+            is_deposit,
+            sender,
+        } = output;
 
         // Fetch the depositor account from the database for the deposit nonce.
         // Note that this *only* needs to be done post-regolith hardfork, as deposit nonces
@@ -180,8 +204,8 @@ where
             .then(|| {
                 self.evm
                     .db_mut()
-                    .load_cache_account(*tx.signer())
-                    .map(|acc| acc.account_info().unwrap_or_default())
+                    .basic(sender)
+                    .map(|acc| acc.unwrap_or_default())
             })
             .transpose()
             .map_err(BlockExecutionError::other)?;
@@ -196,7 +220,7 @@ where
 
         self.receipts.push(
             match self.receipt_builder.build_receipt(ReceiptBuilderCtx {
-                tx: tx.tx(),
+                tx_type,
                 result,
                 cumulative_gas_used: self.gas_used,
                 evm: &self.evm,
@@ -223,7 +247,7 @@ where
                             // transactions.
                             deposit_receipt_version: (is_deposit
                                 && self.spec.is_canyon_active_at_timestamp(
-                                    self.evm.block().timestamp.saturating_to(),
+                                    self.evm.block().timestamp().saturating_to(),
                                 ))
                             .then_some(1),
                         })
@@ -283,6 +307,10 @@ where
     fn evm(&self) -> &Self::Evm {
         &self.evm
     }
+
+    fn receipts(&self) -> &[Self::Receipt] {
+        &self.receipts
+    }
 }
 
 /// Ethereum block executor factory.
@@ -301,7 +329,7 @@ pub struct FraxtalBlockExecutorFactory<
 }
 
 impl<R, Spec, EvmFactory> FraxtalBlockExecutorFactory<R, Spec, EvmFactory> {
-    /// Creates a new [`OpBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
+    /// Creates a new [`FraxtalBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
     /// [`OpReceiptBuilder`].
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
         Self {
@@ -331,7 +359,7 @@ impl<R, Spec, EvmF> BlockExecutorFactory for FraxtalBlockExecutorFactory<R, Spec
 where
     R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
     Spec: OpHardforks + EthChainSpec,
-    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>, BlockEnv = BlockEnv>,
+    EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv>,
     Self: 'static,
 {
     type EvmFactory = EvmF;

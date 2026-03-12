@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use alloy_evm::Database;
 use alloy_op_hardforks::OpHardforks;
 use alloy_primitives::{address, b256, Address, B256, U256};
 use reth_chainspec::EthChainSpec;
 use revm::{
-    database::State,
+    DatabaseCommit,
     state::{Account, Bytecode, EvmStorageSlot},
-    Database, DatabaseCommit,
 };
 use tracing::info;
 
@@ -40,19 +40,16 @@ const TESTNET_FRAX_L1_REPLACEMENTS_INDEXES: &[usize] = &[2137, 6962, 7330];
 const DEVNET_FRAX_L1_REPLACEMENTS_INDEXES: &[usize] = &[693, 1303];
 const DEVNET_SFRAX_L1_REPLACEMENTS_INDEXES: &[usize] = &[693, 1303];
 
-/// The Graanite hardfork issues an irregular state transition that upgrades the frax/sfrax
-/// contracts code to be upgreadable proxies.
+/// The Granite hardfork issues an irregular state transition that upgrades the frax/sfrax
+/// contracts code to be upgradable proxies.
 pub(super) fn migrate_frxusd<DB>(
     chain_spec: impl OpHardforks + EthChainSpec,
     timestamp: u64,
-    db: &mut State<DB>,
+    db: &mut DB,
 ) -> Result<(), DB::Error>
 where
-    DB: revm::Database,
+    DB: Database + DatabaseCommit,
 {
-    // If the granite hardfork is active at the current timestamp, and it was not active at the
-    // previous block timestamp (heuristically, block time is not perfectly constant at 2s), and the
-    // chain is an optimism chain, then we need to upgrade the frax/sfrax contracts.
     if chain_spec.is_granite_active_at_timestamp(timestamp)
         && !chain_spec.is_granite_active_at_timestamp(timestamp.saturating_sub(2))
     {
@@ -137,20 +134,18 @@ fn migrate<DB>(
     owner: Address,
     name_storage: B256,
     symbol_storage: B256,
-    db: &mut State<DB>,
+    db: &mut DB,
 ) -> Result<(), DB::Error>
 where
-    DB: revm::Database,
+    DB: Database + DatabaseCommit,
 {
     info!(target: "evm", "Setting implementation from {} to {}", contract_addr, implementation_addr);
     let l1_token_bytes = l1_token.as_slice();
-    let mut current_contract_acc = db
-        .load_cache_account(contract_addr)?
-        .account_info()
-        .unwrap_or_default();
+    let mut current_contract_acc = db.basic(contract_addr)?.unwrap_or_default();
 
     let mut new_implementation_code = current_contract_acc
         .code
+        .clone()
         .unwrap_or_else(|| {
             db.code_by_hash(current_contract_acc.code_hash)
                 .unwrap_or_default()
@@ -162,10 +157,7 @@ where
         new_implementation_code[*i..*i + l1_token_bytes.len()].copy_from_slice(l1_token_bytes);
     }
 
-    let mut implementation_acc = db
-        .load_cache_account(implementation_addr)?
-        .account_info()
-        .unwrap_or_default();
+    let mut implementation_acc = db.basic(implementation_addr)?.unwrap_or_default();
     implementation_acc.code = Some(Bytecode::new_raw(new_implementation_code.into()));
     implementation_acc.code_hash = implementation_acc
         .code
@@ -176,12 +168,9 @@ where
     implementation_revm_account.mark_touch();
 
     info!(target: "evm", "Setting proxy from {} to {}", proxy_source_addr, contract_addr);
-    let proxy_acc = db
-        .load_cache_account(proxy_source_addr)?
-        .account_info()
-        .unwrap_or_default();
+    let proxy_acc = db.basic(proxy_source_addr)?.unwrap_or_default();
     current_contract_acc.code = proxy_acc.code.clone();
-    current_contract_acc.code_hash = proxy_acc.code_hash.clone();
+    current_contract_acc.code_hash = proxy_acc.code_hash;
 
     let mut current_contract_revm_account: Account = current_contract_acc.into();
     current_contract_revm_account.mark_touch();

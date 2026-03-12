@@ -1,30 +1,29 @@
 use std::collections::HashMap;
 
+use alloy_evm::Database;
 use alloy_op_hardforks::OpHardforks;
-use alloy_primitives::{Address, B256, U256};
+use alloy_primitives::{B256, U256};
 use reth_chainspec::EthChainSpec;
 use revm::{
-    database::State,
+    DatabaseCommit,
     state::{Account, Bytecode, EvmStorageSlot},
-    Database, DatabaseCommit,
 };
 use tracing::info;
 
 mod constants;
 
+use super::utils::{get_contract_code, load_contract_account};
+
 /// The Isthmus hardfork issues an irregular state transition that upgrades the remaining
-/// frax tokens to upgreadable proxies.
+/// frax tokens to upgradable proxies.
 pub(super) fn migrate_frax_isthmus<DB>(
     chain_spec: impl OpHardforks + EthChainSpec,
     timestamp: u64,
-    db: &mut State<DB>,
+    db: &mut DB,
 ) -> Result<(), DB::Error>
 where
-    DB: revm::Database,
+    DB: Database + DatabaseCommit,
 {
-    // If the granite hardfork is active at the current timestamp, and it was not active at the
-    // previous block timestamp (heuristically, block time is not perfectly constant at 2s), and the
-    // chain is an optimism chain, then we need to upgrade the oraacle contracts.
     if chain_spec.is_isthmus_active_at_timestamp(timestamp)
         && !chain_spec.is_isthmus_active_at_timestamp(timestamp.saturating_sub(2))
     {
@@ -35,7 +34,7 @@ where
         info!(target: "evm", "Forcing frax upgrades on Isthmus transition");
 
         for addr in constants::MAINNET_ORACLES_ADDRESSES {
-            let mut implementation_addr = addr.clone();
+            let mut implementation_addr = *addr;
             implementation_addr[0..3].copy_from_slice(&[252, 192, 211]);
             info!(target: "evm", "Setting implementation from {} to {}", addr, implementation_addr);
 
@@ -55,7 +54,7 @@ where
             let proxy_acc: revm::state::AccountInfo =
                 load_contract_account(db, constants::PROXY_ADDR)?;
             current_contract_acc.code = proxy_acc.code.clone();
-            current_contract_acc.code_hash = proxy_acc.code_hash.clone();
+            current_contract_acc.code_hash = proxy_acc.code_hash;
 
             let mut current_contract_revm_account: Account = current_contract_acc.into();
             current_contract_revm_account.mark_touch();
@@ -91,27 +90,3 @@ where
     Ok(())
 }
 
-fn load_contract_account<DB>(
-    db: &mut State<DB>,
-    address: Address,
-) -> Result<revm::state::AccountInfo, DB::Error>
-where
-    DB: revm::Database,
-{
-    Ok(db
-        .load_cache_account(address)?
-        .account_info()
-        .unwrap_or_default())
-}
-
-fn get_contract_code<DB>(db: &mut State<DB>, account: &revm::state::AccountInfo) -> Vec<u8>
-where
-    DB: revm::Database,
-{
-    account
-        .code
-        .clone()
-        .unwrap_or_else(|| db.code_by_hash(account.code_hash).unwrap_or_default())
-        .original_byte_slice()
-        .to_owned()
-}

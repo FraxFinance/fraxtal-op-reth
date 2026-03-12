@@ -8,7 +8,7 @@ use alloy_op_evm::{
     OpBlockExecutionCtx,
     block::{OpTxEnv, receipt_builder::OpReceiptBuilder},
 };
-use alloy_primitives::U256;
+use alloy_primitives::{Bytes, U256};
 use core::fmt::Debug;
 use fraxtal_op_evm::{FraxtalBlockExecutorFactory, FraxtalEvmFactory};
 use op_alloy_consensus::EIP1559ParamError;
@@ -214,7 +214,7 @@ where
 
         let cfg_env = CfgEnv::new()
             .with_chain_id(self.chain_spec().chain().id())
-            .with_spec(spec);
+            .with_spec_and_mainnet_gas_params(spec);
 
         let blob_excess_gas_and_price = spec
             .into_eth_spec()
@@ -259,16 +259,14 @@ where
         &self,
         payload: &OpExecutionData,
     ) -> Result<impl ExecutableTxIterator<Self>, Self::Error> {
-        Ok(payload
-            .payload
-            .transactions()
-            .clone()
-            .into_iter()
-            .map(|encoded| {
-                let tx = TxTy::<Self::Primitives>::decode_2718_exact(encoded.as_ref())
-                    .map_err(AnyError::new)?;
-                let signer = tx.try_recover().map_err(AnyError::new)?;
-                Ok::<_, AnyError>(WithEncoded::new(encoded, tx.with_signer(signer)))
-            }))
+        let transactions = payload.payload.transactions().clone();
+        let convert = |encoded: Bytes| {
+            let tx = TxTy::<Self::Primitives>::decode_2718_exact(encoded.as_ref())
+                .map_err(AnyError::new)?;
+            let signer = tx.try_recover().map_err(AnyError::new)?;
+            Ok::<_, AnyError>(WithEncoded::new(encoded, tx.with_signer(signer)))
+        };
+
+        Ok((transactions, convert))
     }
 }
