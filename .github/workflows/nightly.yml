@@ -9,7 +9,7 @@ on:
       - "*"
 
 env:
-  DOCKER_IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/fraxtal-op-reth
+  DOCKER_IMAGE_NAME: ghcr.io/fraxfinance/fraxtal-op-reth
   CARGO_TERM_COLOR: always
   DOCKER_USERNAME: ${{ github.actor }}
 
