@@ -9,7 +9,7 @@ default-members = ["bin/fraxtal-op-reth"]
 resolver = "2"
 
 [workspace.package]
-version = "1.11.3-frax-1.3.1"
+version = "1.11.3-frax-1.3.2"
 edition = "2024"
 rust-version = "1.88"
 
@@ -42,6 +42,9 @@ reth-revm = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-rpc-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-storage-errors = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-transaction-pool = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-db-api = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
+reth-tasks = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 reth-trie-db = { git = "https://github.com/paradigmxyz/reth", tag = "v1.11.3" }
 
 # reth-optimism crates — from ethereum-optimism/optimism monorepo
@@ -54,6 +57,8 @@ reth-optimism-node = { git = "https://github.com/ethereum-optimism/optimism", re
 reth-optimism-payload-builder = { git = "https://github.com/ethereum-optimism/optimism", rev = "7149381de9a8a462609d650834ef18e2d69f74df" }
 reth-optimism-primitives = { git = "https://github.com/ethereum-optimism/optimism", rev = "7149381de9a8a462609d650834ef18e2d69f74df" }
 reth-optimism-rpc = { git = "https://github.com/ethereum-optimism/optimism", rev = "7149381de9a8a462609d650834ef18e2d69f74df" }
+reth-optimism-exex = { git = "https://github.com/ethereum-optimism/optimism", rev = "7149381de9a8a462609d650834ef18e2d69f74df" }
+reth-optimism-trie = { git = "https://github.com/ethereum-optimism/optimism", rev = "7149381de9a8a462609d650834ef18e2d69f74df" }
 
 # eth
 alloy-chains = { version = "0.2.30", default-features = false }
@@ -85,6 +90,8 @@ auto_impl = "1"
 clap = { version = "4", features = ["derive", "env"] }
 tracing = { version = "0.1.0", default-features = false }
 eyre = "0.6"
+futures-util = "0.3"
+tokio = { version = "1", default-features = false }
 thiserror = { version = "2.0.0", default-features = false }
 derive_more = { version = "2", default-features = false, features = ["full"] }
 
