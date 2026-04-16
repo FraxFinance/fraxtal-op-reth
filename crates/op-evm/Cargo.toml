@@ -23,6 +23,7 @@ revm.workspace = true
 op-revm.workspace = true
 
 auto_impl.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 [features]
@@ -35,4 +36,5 @@ std = [
     "alloy-consensus/std",
     "alloy-eips/std",
     "op-alloy-consensus/std",
+    "thiserror/std",
 ]

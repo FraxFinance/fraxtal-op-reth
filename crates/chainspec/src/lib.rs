@@ -7,7 +7,7 @@ use std::sync::Arc;
 mod fraxtal;
 mod fraxtal_hoodi_testnet;
 
-/// Optimism chain specification parser.
+/// Fraxtal chain specification parser.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 pub struct FraxtalChainSpecParser;
@@ -46,7 +46,7 @@ mod tests {
     }
 }
 
-/// Optimism chain specification parser.
+/// Convenience accessors for the built-in Fraxtal chain specs.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 pub struct FraxtalChainSpec;

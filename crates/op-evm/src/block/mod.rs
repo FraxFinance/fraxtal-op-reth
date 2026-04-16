@@ -19,10 +19,13 @@ use alloy_op_evm::{
     block::{OpAlloyReceiptBuilder, OpTxEnv, receipt_builder::OpReceiptBuilder},
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes};
 use canyon::ensure_create2_deployer;
 use op_alloy_consensus::OpDepositReceipt;
-use op_revm::transaction::deposit::DEPOSIT_TRANSACTION_TYPE;
+use op_revm::{
+    L1BlockInfo, constants::L1_BLOCK_CONTRACT, estimate_tx_compressed_size,
+    transaction::deposit::DEPOSIT_TRANSACTION_TYPE,
+};
 use reth_chainspec::EthChainSpec;
 use revm::{
     Database as _, DatabaseCommit, Inspector,
@@ -74,6 +77,11 @@ pub struct FraxtalBlockExecutor<Evm, R: OpReceiptBuilder, Spec> {
     pub receipts: Vec<R::Receipt>,
     /// Total gas used by executed transactions.
     pub gas_used: u64,
+    /// Da footprint.
+    ///
+    /// This is only set for blocks post-Jovian activation.
+    /// See [DA footprint block limit spec](https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/jovian/exec-engine.md#da-footprint-block-limit)
+    pub da_footprint_used: u64,
     /// Whether Regolith hardfork is active.
     pub is_regolith: bool,
     /// Utility to call system smart contracts.
@@ -97,8 +105,70 @@ where
             receipt_builder,
             receipts: Vec::new(),
             gas_used: 0,
+            da_footprint_used: 0,
             ctx,
         }
+    }
+}
+
+/// Custom errors that can occur during OP block execution.
+#[derive(Debug, thiserror::Error)]
+pub enum OpBlockExecutionError {
+    /// Failed to load cache account.
+    #[error("failed to load cache account")]
+    LoadCacheAccount,
+
+    /// Failed to get Jovian da footprint gas scalar from database.
+    #[error("failed to get da footprint gas scalar from database: {_0}")]
+    GetJovianDaFootprintScalar(Box<dyn core::error::Error + Send + Sync + 'static>),
+
+    /// Transaction DA footprint exceeds available block DA footprint.
+    #[error(
+        "transaction DA footprint exceeds available block DA footprint. transaction_da_footprint: {transaction_da_footprint}, available_block_da_footprint: {available_block_da_footprint}"
+    )]
+    TransactionDaFootprintAboveGasLimit {
+        /// The DA footprint of the transaction to execute.
+        transaction_da_footprint: u64,
+        /// The available block DA footprint.
+        available_block_da_footprint: u64,
+    },
+}
+
+impl<E, R, Spec> FraxtalBlockExecutor<E, R, Spec>
+where
+    E: Evm<
+            DB: Database + DatabaseCommit + StateDB,
+            Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction> + OpTxEnv,
+        >,
+    R: OpReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt>,
+    Spec: OpHardforks,
+{
+    fn jovian_da_footprint_estimation(
+        &mut self,
+        tx_env: &E::Tx,
+        tx: impl RecoveredTx<R::Transaction>,
+    ) -> Result<u64, BlockExecutionError> {
+        // Try to use the enveloped tx if it exists, otherwise use the encoded 2718 bytes
+        let encoded = tx_env
+            .encoded_bytes()
+            .map_or_else(
+                || estimate_tx_compressed_size(tx.tx().encoded_2718().as_ref()),
+                |encoded: &Bytes| estimate_tx_compressed_size(encoded),
+            )
+            .saturating_div(1_000_000);
+
+        // Load the L1 block contract into the cache. If the L1 block contract is not pre-loaded the
+        // database will panic when trying to fetch the DA footprint gas scalar.
+        self.evm
+            .db_mut()
+            .basic(L1_BLOCK_CONTRACT)
+            .map_err(BlockExecutionError::other)?;
+
+        let da_footprint_gas_scalar = L1BlockInfo::fetch_da_footprint_gas_scalar(self.evm.db_mut())
+            .map_err(BlockExecutionError::other)?
+            .into();
+
+        Ok(encoded.saturating_mul(da_footprint_gas_scalar))
     }
 }
 
@@ -166,6 +236,29 @@ where
             );
         }
 
+        let da_footprint_used = if self
+            .spec
+            .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
+            && !is_deposit
+        {
+            let da_footprint_available = self.evm.block().gas_limit() - self.da_footprint_used;
+
+            let tx_da_footprint = self.jovian_da_footprint_estimation(&tx_env, &tx)?;
+
+            if tx_da_footprint > da_footprint_available {
+                return Err(BlockExecutionError::Validation(BlockValidationError::Other(
+                    Box::new(OpBlockExecutionError::TransactionDaFootprintAboveGasLimit {
+                        transaction_da_footprint: tx_da_footprint,
+                        available_block_da_footprint: da_footprint_available,
+                    }),
+                )));
+            }
+
+            tx_da_footprint
+        } else {
+            0
+        };
+
         // Execute transaction and return the result
         let result = self.evm.transact(tx_env).map_err(|err| {
             let hash = tx.tx().trie_hash();
@@ -175,7 +268,7 @@ where
         Ok(FraxtalTxResult {
             inner: EthTxResult {
                 result,
-                blob_gas_used: 0,
+                blob_gas_used: da_footprint_used,
                 tx_type: tx.tx().tx_type(),
             },
             is_deposit,
@@ -188,8 +281,8 @@ where
             inner:
                 EthTxResult {
                     result: ResultAndState { result, state },
+                    blob_gas_used,
                     tx_type,
-                    ..
                 },
             is_deposit,
             sender,
@@ -216,6 +309,15 @@ where
 
         // append gas used
         self.gas_used += gas_used;
+
+        // Update DA footprint if Jovian is active
+        if self
+            .spec
+            .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
+            && !is_deposit
+        {
+            self.da_footprint_used = self.da_footprint_used.saturating_add(blob_gas_used);
+        }
 
         self.receipts.push(
             match self.receipt_builder.build_receipt(ReceiptBuilderCtx {
@@ -279,18 +381,19 @@ where
             })
         })?;
 
-        let gas_used = self
+        let legacy_gas_used = self
             .receipts
             .last()
             .map(|r| r.cumulative_gas_used())
             .unwrap_or_default();
+
         Ok((
             self.evm,
             BlockExecutionResult {
                 receipts: self.receipts,
                 requests: Default::default(),
-                gas_used,
-                blob_gas_used: 0,
+                gas_used: legacy_gas_used,
+                blob_gas_used: self.da_footprint_used,
             },
         ))
     }

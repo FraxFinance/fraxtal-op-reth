@@ -3096,7 +3096,6 @@ dependencies = [
  "reth-provider",
  "reth-rpc-api",
  "reth-tasks",
- "reth-transaction-pool",
  "reth-trie-db",
  "revm",
  "tokio",
@@ -3118,6 +3117,7 @@ dependencies = [
  "op-revm",
  "reth-chainspec",
  "revm",
+ "thiserror 2.0.18",
  "tracing",
 ]
 

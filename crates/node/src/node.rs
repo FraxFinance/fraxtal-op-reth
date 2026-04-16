@@ -1,17 +1,11 @@
 use std::sync::Arc;
 
 use fraxtal_evm::FraxtalEvmConfig;
-use reth_chainspec::{BaseFeeParams, ChainSpecProvider, EthereumHardforks};
-use reth_evm::ConfigureEvm;
-use reth_node_api::{
-    BuildNextEnv, FullNodeComponents, HeaderTy, PayloadAttributesBuilder, PayloadTypes,
-    PrimitivesTy, TxTy,
-};
+use reth_chainspec::{BaseFeeParams, EthereumHardforks};
+use reth_node_api::{FullNodeComponents, PayloadAttributesBuilder, PayloadTypes};
 use reth_node_builder::{
     BuilderContext, DebugNode, Node, NodeAdapter, NodeComponentsBuilder,
-    components::{
-        BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder, PayloadBuilderBuilder,
-    },
+    components::{BasicPayloadServiceBuilder, ComponentsBuilder, ExecutorBuilder},
     node::{FullNodeTypes, NodeTypes},
     rpc::BasicEngineValidatorBuilder,
 };
@@ -23,20 +17,17 @@ use reth_optimism_node::{
     args::RollupArgs,
     node::{
         OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNetworkBuilder, OpNodeTypes,
-        OpPoolBuilder,
+        OpPayloadBuilder, OpPoolBuilder,
     },
-    txpool::OpPooledTx,
 };
 use reth_optimism_payload_builder::{
-    OpBuiltPayload, OpPayloadAttrs, OpPayloadBuilderAttributes, OpPayloadPrimitives,
-    builder::OpPayloadTransactions,
-    config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
+    OpPayloadAttrs,
+    config::{OpDAConfig, OpGasLimitConfig},
 };
 use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::eth::RpcTypes;
-use reth_transaction_pool::TransactionPool;
 
 /// Builds [`OpPayloadAttrs`] for local/dev-mode payload generation.
 struct OpLocalPayloadAttributesBuilder {
@@ -121,7 +112,7 @@ pub struct FraxtalNode {
 }
 
 /// A [`ComponentsBuilder`] with its generic arguments set to a stack of Optimism specific builders.
-pub type FraxtalNodeComponentBuilder<Node, Payload = FraxtalPayloadBuilder> = ComponentsBuilder<
+pub type FraxtalNodeComponentBuilder<Node, Payload = OpPayloadBuilder> = ComponentsBuilder<
     Node,
     OpPoolBuilder,
     BasicPayloadServiceBuilder<Payload>,
@@ -175,7 +166,7 @@ impl FraxtalNode {
             )
             .executor(FraxtalExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
-                FraxtalPayloadBuilder::new(compute_pending_block)
+                OpPayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone())
                     .with_gas_limit_config(self.gas_limit_config.clone()),
             ))
@@ -239,7 +230,7 @@ where
     type ComponentsBuilder = ComponentsBuilder<
         N,
         OpPoolBuilder,
-        BasicPayloadServiceBuilder<FraxtalPayloadBuilder>,
+        BasicPayloadServiceBuilder<OpPayloadBuilder>,
         OpNetworkBuilder,
         FraxtalExecutorBuilder,
         OpConsensusBuilder,
@@ -309,121 +300,3 @@ where
     }
 }
 
-/// A basic optimism payload service builder
-#[derive(Debug, Default, Clone)]
-pub struct FraxtalPayloadBuilder<Txs = ()> {
-    /// By default the pending block equals the latest block
-    /// to save resources and not leak txs from the tx-pool,
-    /// this flag enables computing of the pending block
-    /// from the tx-pool instead.
-    ///
-    /// If `compute_pending_block` is not enabled, the payload builder
-    /// will use the payload attributes from the latest block. Note
-    /// that this flag is not yet functional.
-    pub compute_pending_block: bool,
-    /// The type responsible for yielding the best transactions for the payload if mempool
-    /// transactions are allowed.
-    pub best_transactions: Txs,
-    /// This data availability configuration specifies constraints for the payload builder
-    /// when assembling payloads
-    pub da_config: OpDAConfig,
-    /// Gas limit configuration for the OP builder.
-    /// Used to control the gas limit of the blocks produced by the OP builder.
-    pub gas_limit_config: OpGasLimitConfig,
-}
-
-impl FraxtalPayloadBuilder {
-    /// Create a new instance with the given `compute_pending_block` flag and data availability
-    /// config.
-    pub fn new(compute_pending_block: bool) -> Self {
-        Self {
-            compute_pending_block,
-            best_transactions: (),
-            da_config: OpDAConfig::default(),
-            gas_limit_config: OpGasLimitConfig::default(),
-        }
-    }
-
-    /// Configure the data availability configuration for the OP payload builder.
-    pub fn with_da_config(mut self, da_config: OpDAConfig) -> Self {
-        self.da_config = da_config;
-        self
-    }
-
-    /// Configure the gas limit configuration for the OP builder.
-    pub fn with_gas_limit_config(mut self, gas_limit_config: OpGasLimitConfig) -> Self {
-        self.gas_limit_config = gas_limit_config;
-        self
-    }
-}
-
-impl<Txs> FraxtalPayloadBuilder<Txs> {
-    /// Configures the type responsible for yielding the transactions that should be included in the
-    /// payload.
-    pub fn with_transactions<T>(self, best_transactions: T) -> FraxtalPayloadBuilder<T> {
-        let Self {
-            compute_pending_block,
-            da_config,
-            gas_limit_config,
-            ..
-        } = self;
-        FraxtalPayloadBuilder {
-            compute_pending_block,
-            best_transactions,
-            da_config,
-            gas_limit_config,
-        }
-    }
-}
-
-impl<Node, Pool, Txs, Evm> PayloadBuilderBuilder<Node, Pool, Evm> for FraxtalPayloadBuilder<Txs>
-where
-    Node: FullNodeTypes<
-            Provider: ChainSpecProvider<ChainSpec: OpHardforks>,
-            Types: NodeTypes<
-                Primitives: OpPayloadPrimitives,
-                Payload: PayloadTypes<
-                    BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
-                    PayloadAttributes = OpPayloadAttrs,
-                >,
-            >,
-        >,
-    Evm: ConfigureEvm<
-            Primitives = PrimitivesTy<Node::Types>,
-            NextBlockEnvCtx: BuildNextEnv<
-                OpPayloadBuilderAttributes<TxTy<Node::Types>>,
-                HeaderTy<Node::Types>,
-                <Node::Types as NodeTypes>::ChainSpec,
-            >,
-        > + 'static,
-    Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
-    Txs: OpPayloadTransactions<Pool::Transaction>,
-{
-    type PayloadBuilder = reth_optimism_payload_builder::OpPayloadBuilder<
-        Pool,
-        Node::Provider,
-        Evm,
-        Txs,
-        OpPayloadBuilderAttributes<TxTy<Node::Types>>,
-    >;
-
-    async fn build_payload_builder(
-        self,
-        ctx: &BuilderContext<Node>,
-        pool: Pool,
-        evm_config: Evm,
-    ) -> eyre::Result<Self::PayloadBuilder> {
-        let payload_builder = reth_optimism_payload_builder::OpPayloadBuilder::with_builder_config(
-            pool,
-            ctx.provider().clone(),
-            evm_config,
-            OpBuilderConfig {
-                da_config: self.da_config.clone(),
-                gas_limit_config: self.gas_limit_config.clone(),
-            },
-        )
-        .with_transactions(self.best_transactions.clone())
-        .set_compute_pending_block(self.compute_pending_block);
-        Ok(payload_builder)
-    }
-}
