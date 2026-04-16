@@ -9,7 +9,7 @@ workspace = true
 
 [dependencies]
 reth-chainspec.workspace = true
-alloy-evm = { workspace = true, features = ["op"] }
+alloy-evm.workspace = true
 
 alloy-eips.workspace = true
 alloy-consensus.workspace = true

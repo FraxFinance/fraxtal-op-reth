@@ -40,8 +40,13 @@ tracing.workspace = true
 eyre.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
+alloy-consensus.workspace = true
+alloy-primitives.workspace = true
+alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 op-alloy-consensus.workspace = true
+op-alloy-rpc-types-engine.workspace = true
+reth-primitives-traits.workspace = true
 
 [features]
 default = ["optimism"]

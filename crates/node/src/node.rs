@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use fraxtal_evm::FraxtalEvmConfig;
-use reth_chainspec::ChainSpecProvider;
-use reth_engine_local::LocalPayloadAttributesBuilder;
+use reth_chainspec::{BaseFeeParams, ChainSpecProvider, EthereumHardforks};
 use reth_evm::ConfigureEvm;
 use reth_node_api::{
     BuildNextEnv, FullNodeComponents, HeaderTy, PayloadAttributesBuilder, PayloadTypes,
@@ -29,7 +28,7 @@ use reth_optimism_node::{
     txpool::OpPooledTx,
 };
 use reth_optimism_payload_builder::{
-    OpAttributes, OpBuiltPayload, OpPayloadPrimitives,
+    OpBuiltPayload, OpPayloadAttrs, OpPayloadBuilderAttributes, OpPayloadPrimitives,
     builder::OpPayloadTransactions,
     config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig},
 };
@@ -38,6 +37,69 @@ use reth_optimism_rpc::eth::OpEthApiBuilder;
 use reth_provider::providers::ProviderFactoryBuilder;
 use reth_rpc_api::eth::RpcTypes;
 use reth_transaction_pool::TransactionPool;
+
+/// Builds [`OpPayloadAttrs`] for local/dev-mode payload generation.
+struct OpLocalPayloadAttributesBuilder {
+    chain_spec: Arc<OpChainSpec>,
+}
+
+impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilder {
+    fn build(
+        &self,
+        parent: &reth_primitives_traits::SealedHeader<alloy_consensus::Header>,
+    ) -> OpPayloadAttrs {
+        use alloy_consensus::BlockHeader;
+        use alloy_primitives::{Address, B64};
+
+        let timestamp = std::cmp::max(
+            parent.timestamp().saturating_add(1),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        );
+
+        let eth_attrs = alloy_rpc_types_engine::PayloadAttributes {
+            timestamp,
+            prev_randao: alloy_primitives::B256::random(),
+            suggested_fee_recipient: Address::random(),
+            withdrawals: self
+                .chain_spec
+                .is_shanghai_active_at_timestamp(timestamp)
+                .then(Default::default),
+            parent_beacon_block_root: self
+                .chain_spec
+                .is_cancun_active_at_timestamp(timestamp)
+                .then(alloy_primitives::B256::random),
+        };
+
+        let default_params = BaseFeeParams::optimism();
+        let denominator = std::env::var("OP_DEV_EIP1559_DENOMINATOR")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(default_params.max_change_denominator as u32);
+        let elasticity = std::env::var("OP_DEV_EIP1559_ELASTICITY")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(default_params.elasticity_multiplier as u32);
+        let gas_limit = std::env::var("OP_DEV_GAS_LIMIT")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+
+        let mut eip1559_bytes = [0u8; 8];
+        eip1559_bytes[0..4].copy_from_slice(&denominator.to_be_bytes());
+        eip1559_bytes[4..8].copy_from_slice(&elasticity.to_be_bytes());
+
+        OpPayloadAttrs(op_alloy_rpc_types_engine::OpPayloadAttributes {
+            payload_attributes: eth_attrs,
+            transactions: None,
+            no_tx_pool: None,
+            gas_limit,
+            eip_1559_params: Some(B64::from(eip1559_bytes)),
+            min_base_fee: Some(0),
+        })
+    }
+}
 
 /// Type configuration for a regular Optimism node.
 #[derive(Debug, Default, Clone)]
@@ -132,6 +194,7 @@ impl FraxtalNode {
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
             .with_historical_rpc(self.args.historical_rpc.clone())
             .with_flashblocks(self.args.flashblocks_url.clone())
+            .with_flashblock_consensus(self.args.flashblock_consensus)
     }
 
     /// Instantiates the [`ProviderFactoryBuilder`] for an opstack node.
@@ -212,7 +275,9 @@ where
     fn local_payload_attributes_builder(
         chain_spec: &Self::ChainSpec,
     ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
+        OpLocalPayloadAttributesBuilder {
+            chain_spec: Arc::new(chain_spec.clone()),
+        }
     }
 }
 
@@ -311,8 +376,7 @@ impl<Txs> FraxtalPayloadBuilder<Txs> {
     }
 }
 
-impl<Node, Pool, Txs, Evm, Attrs> PayloadBuilderBuilder<Node, Pool, Evm>
-    for FraxtalPayloadBuilder<Txs>
+impl<Node, Pool, Txs, Evm> PayloadBuilderBuilder<Node, Pool, Evm> for FraxtalPayloadBuilder<Txs>
 where
     Node: FullNodeTypes<
             Provider: ChainSpecProvider<ChainSpec: OpHardforks>,
@@ -320,24 +384,28 @@ where
                 Primitives: OpPayloadPrimitives,
                 Payload: PayloadTypes<
                     BuiltPayload = OpBuiltPayload<PrimitivesTy<Node::Types>>,
-                    PayloadBuilderAttributes = Attrs,
+                    PayloadAttributes = OpPayloadAttrs,
                 >,
             >,
         >,
     Evm: ConfigureEvm<
             Primitives = PrimitivesTy<Node::Types>,
             NextBlockEnvCtx: BuildNextEnv<
-                Attrs,
+                OpPayloadBuilderAttributes<TxTy<Node::Types>>,
                 HeaderTy<Node::Types>,
                 <Node::Types as NodeTypes>::ChainSpec,
             >,
         > + 'static,
     Pool: TransactionPool<Transaction: OpPooledTx<Consensus = TxTy<Node::Types>>> + Unpin + 'static,
     Txs: OpPayloadTransactions<Pool::Transaction>,
-    Attrs: OpAttributes<Transaction = TxTy<Node::Types>>,
 {
-    type PayloadBuilder =
-        reth_optimism_payload_builder::OpPayloadBuilder<Pool, Node::Provider, Evm, Txs, Attrs>;
+    type PayloadBuilder = reth_optimism_payload_builder::OpPayloadBuilder<
+        Pool,
+        Node::Provider,
+        Evm,
+        Txs,
+        OpPayloadBuilderAttributes<TxTy<Node::Types>>,
+    >;
 
     async fn build_payload_builder(
         self,

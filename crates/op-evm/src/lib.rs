@@ -1,13 +1,15 @@
 extern crate alloc;
 
-use alloy_evm::{Database, Evm, EvmEnv, EvmFactory, precompiles::PrecompilesMap};
+use alloy_evm::{Database, Evm, EvmEnv, EvmFactory, IntoTxEnv, precompiles::PrecompilesMap};
+use alloy_op_evm::{OpTx, OpTxError, map_op_err};
 use alloy_primitives::{Address, Bytes};
 use core::{
     fmt::Debug,
+    marker::PhantomData,
     ops::{Deref, DerefMut},
 };
 use op_revm::{
-    DefaultOp, OpBuilder, OpContext, OpHaltReason, OpSpecId, OpTransaction, OpTransactionError,
+    DefaultOp, OpBuilder, OpContext, OpHaltReason, OpSpecId, OpTransaction,
     precompiles::OpPrecompiles,
 };
 use revm::{
@@ -28,12 +30,13 @@ pub use block::{FraxtalBlockExecutor, FraxtalBlockExecutorFactory};
 /// support. [`Inspector`] support is configurable at runtime because it's part of the underlying
 /// [`OpEvm`](op_revm::OpEvm) type.
 #[allow(missing_debug_implementations)] // missing revm::OpContext Debug impl
-pub struct FraxtalEvm<DB: Database, I, P = OpPrecompiles> {
+pub struct FraxtalEvm<DB: Database, I, P = OpPrecompiles, Tx = OpTx> {
     inner: op_revm::OpEvm<OpContext<DB>, I, EthInstructions<EthInterpreter, OpContext<DB>>, P>,
     inspect: bool,
+    _tx: PhantomData<Tx>,
 }
 
-impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
+impl<DB: Database, I, P, Tx> FraxtalEvm<DB, I, P, Tx> {
     /// Provides a reference to the EVM context.
     pub const fn ctx(&self) -> &OpContext<DB> {
         &self.inner.0.ctx
@@ -45,7 +48,7 @@ impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
     }
 }
 
-impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
+impl<DB: Database, I, P, Tx> FraxtalEvm<DB, I, P, Tx> {
     /// Creates a new OP EVM instance.
     ///
     /// The `inspect` argument determines whether the configured [`Inspector`] of the given
@@ -57,11 +60,12 @@ impl<DB: Database, I, P> FraxtalEvm<DB, I, P> {
         Self {
             inner: evm,
             inspect,
+            _tx: PhantomData,
         }
     }
 }
 
-impl<DB: Database, I, P> Deref for FraxtalEvm<DB, I, P> {
+impl<DB: Database, I, P, Tx> Deref for FraxtalEvm<DB, I, P, Tx> {
     type Target = OpContext<DB>;
 
     #[inline]
@@ -70,22 +74,23 @@ impl<DB: Database, I, P> Deref for FraxtalEvm<DB, I, P> {
     }
 }
 
-impl<DB: Database, I, P> DerefMut for FraxtalEvm<DB, I, P> {
+impl<DB: Database, I, P, Tx> DerefMut for FraxtalEvm<DB, I, P, Tx> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.ctx_mut()
     }
 }
 
-impl<DB, I, P> Evm for FraxtalEvm<DB, I, P>
+impl<DB, I, P, Tx> Evm for FraxtalEvm<DB, I, P, Tx>
 where
     DB: Database,
     I: Inspector<OpContext<DB>>,
     P: PrecompileProvider<OpContext<DB>, Output = InterpreterResult>,
+    Tx: IntoTxEnv<Tx> + Into<OpTransaction<TxEnv>>,
 {
     type DB = DB;
-    type Tx = OpTransaction<TxEnv>;
-    type Error = EVMError<DB::Error, OpTransactionError>;
+    type Tx = Tx;
+    type Error = EVMError<DB::Error, OpTxError>;
     type HaltReason = OpHaltReason;
     type Spec = OpSpecId;
     type Precompiles = P;
@@ -104,11 +109,13 @@ where
         &mut self,
         tx: Self::Tx,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        if self.inspect {
-            self.inner.inspect_tx(tx)
+        let inner_tx: OpTransaction<TxEnv> = tx.into();
+        let result = if self.inspect {
+            self.inner.inspect_tx(inner_tx)
         } else {
-            self.inner.transact(tx)
-        }
+            self.inner.transact(inner_tx)
+        };
+        result.map_err(map_op_err)
     }
 
     fn transact_system_call(
@@ -117,7 +124,9 @@ where
         contract: Address,
         data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        self.inner.system_call_with_caller(caller, contract, data)
+        self.inner
+            .system_call_with_caller(caller, contract, data)
+            .map_err(map_op_err)
     }
 
     fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
@@ -152,17 +161,32 @@ where
     }
 }
 
-/// Factory producing [`OpEvm`]s.
-#[derive(Debug, Default, Clone, Copy)]
-#[non_exhaustive]
-pub struct FraxtalEvmFactory;
+/// Factory producing [`FraxtalEvm`]s.
+#[derive(Debug)]
+pub struct FraxtalEvmFactory<Tx = OpTx>(PhantomData<Tx>);
 
-impl EvmFactory for FraxtalEvmFactory {
-    type Evm<DB: Database, I: Inspector<OpContext<DB>>> = FraxtalEvm<DB, I, Self::Precompiles>;
+impl<Tx> Clone for FraxtalEvmFactory<Tx> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<Tx> Copy for FraxtalEvmFactory<Tx> {}
+
+impl<Tx> Default for FraxtalEvmFactory<Tx> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<Tx> EvmFactory for FraxtalEvmFactory<Tx>
+where
+    Tx: IntoTxEnv<Tx> + Into<OpTransaction<TxEnv>> + Default + Clone + Debug,
+{
+    type Evm<DB: Database, I: Inspector<OpContext<DB>>> = FraxtalEvm<DB, I, Self::Precompiles, Tx>;
     type Context<DB: Database> = OpContext<DB>;
-    type Tx = OpTransaction<TxEnv>;
-    type Error<DBError: core::error::Error + Send + Sync + 'static> =
-        EVMError<DBError, OpTransactionError>;
+    type Tx = Tx;
+    type Error<DBError: core::error::Error + Send + Sync + 'static> = EVMError<DBError, OpTxError>;
     type HaltReason = OpHaltReason;
     type Spec = OpSpecId;
     type Precompiles = PrecompilesMap;
@@ -184,6 +208,7 @@ impl EvmFactory for FraxtalEvmFactory {
                     OpPrecompiles::new_with_spec(spec_id).precompiles(),
                 )),
             inspect: false,
+            _tx: PhantomData,
         }
     }
 
@@ -204,6 +229,7 @@ impl EvmFactory for FraxtalEvmFactory {
                     OpPrecompiles::new_with_spec(spec_id).precompiles(),
                 )),
             inspect: true,
+            _tx: PhantomData,
         }
     }
 }

@@ -5,19 +5,20 @@ use alloy_consensus::{BlockHeader, Header};
 use alloy_eips::Decodable2718;
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded};
 use alloy_op_evm::{
-    OpBlockExecutionCtx,
+    OpBlockExecutionCtx, OpTx,
     block::{OpTxEnv, receipt_builder::OpReceiptBuilder},
+    evm_env_for_op_block, evm_env_for_op_next_block,
 };
 use alloy_primitives::{Bytes, U256};
 use core::fmt::Debug;
 use fraxtal_op_evm::{FraxtalBlockExecutorFactory, FraxtalEvmFactory};
 use op_alloy_consensus::EIP1559ParamError;
 use op_alloy_rpc_types_engine::OpExecutionData;
-use op_revm::{OpSpecId, OpTransaction};
+use op_revm::OpSpecId;
 use reth_chainspec::EthChainSpec;
 use reth_evm::{
     ConfigureEngineEvm, ConfigureEvm, EvmEnv, EvmEnvFor, ExecutableTxIterator, ExecutionCtxFor,
-    TransactionEnv, eth::NextEvmEnvAttributes, precompiles::PrecompilesMap,
+    eth::NextEvmEnvAttributes, precompiles::PrecompilesMap,
 };
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::{
@@ -25,18 +26,17 @@ use reth_optimism_evm::{
     revm_spec_by_timestamp_after_bedrock,
 };
 use reth_optimism_forks::OpHardforks;
+use reth_optimism_payload_builder::OpExecData;
 use reth_optimism_primitives::{DepositReceipt, OpPrimitives};
 use reth_primitives_traits::{
     NodePrimitives, SealedBlock, SealedHeader, SignedTransaction, TxTy, WithEncoded,
 };
 use reth_storage_errors::any::AnyError;
 use revm::{
-    context::{BlockEnv, CfgEnv, TxEnv},
+    context::{BlockEnv, CfgEnv},
     context_interface::block::BlobExcessGasAndPrice,
     primitives::hardfork::SpecId,
 };
-
-pub use alloy_op_evm::{OpBlockExecutorFactory, OpEvm, OpEvmFactory};
 
 /// Optimism-related EVM configuration.
 #[derive(Debug)]
@@ -109,12 +109,12 @@ where
             BlockBody = alloy_consensus::BlockBody<R::Transaction>,
             Block = alloy_consensus::Block<R::Transaction>,
         >,
-    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
+    OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     R: OpReceiptBuilder<Receipt: DepositReceipt, Transaction: SignedTransaction>,
     EvmF: EvmFactory<
             Tx: FromRecoveredTx<R::Transaction>
                     + FromTxWithEncoded<R::Transaction>
-                    + TransactionEnv
+                    + alloy_evm::TransactionEnvMut
                     + OpTxEnv,
             Precompiles = PrecompilesMap,
             Spec = OpSpecId,
@@ -137,7 +137,7 @@ where
     }
 
     fn evm_env(&self, header: &Header) -> Result<EvmEnv<OpSpecId>, Self::Error> {
-        Ok(EvmEnv::for_op_block(
+        Ok(evm_env_for_op_block(
             header,
             self.chain_spec(),
             self.chain_spec().chain().id(),
@@ -149,7 +149,7 @@ where
         parent: &Header,
         attributes: &Self::NextBlockEnvCtx,
     ) -> Result<EvmEnv<OpSpecId>, Self::Error> {
-        Ok(EvmEnv::for_op_next_block(
+        Ok(evm_env_for_op_next_block(
             parent,
             NextEvmEnvAttributes {
                 timestamp: attributes.timestamp,
@@ -199,7 +199,7 @@ where
             BlockBody = alloy_consensus::BlockBody<R::Transaction>,
             Block = alloy_consensus::Block<R::Transaction>,
         >,
-    OpTransaction<TxEnv>: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
+    OpTx: FromRecoveredTx<N::SignedTx> + FromTxWithEncoded<N::SignedTx>,
     R: OpReceiptBuilder<Receipt: DepositReceipt, Transaction: SignedTransaction>,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
@@ -239,6 +239,7 @@ where
             basefee: payload.payload.as_v1().base_fee_per_gas.to(),
             // EIP-4844 excess blob gas of this block, introduced in Cancun
             blob_excess_gas_and_price,
+            slot_num: 0,
         };
 
         Ok(EvmEnv { cfg_env, block_env })
@@ -268,5 +269,31 @@ where
         };
 
         Ok((transactions, convert))
+    }
+}
+
+impl<ChainSpec, N, R> ConfigureEngineEvm<OpExecData> for FraxtalEvmConfig<ChainSpec, N, R>
+where
+    N: NodePrimitives,
+    R: Send + Sync + Unpin + Clone + 'static,
+    ChainSpec: Send + Sync + Unpin + Clone + 'static,
+    Self: ConfigureEngineEvm<OpExecutionData>,
+{
+    fn evm_env_for_payload(&self, payload: &OpExecData) -> Result<EvmEnvFor<Self>, Self::Error> {
+        ConfigureEngineEvm::<OpExecutionData>::evm_env_for_payload(self, &payload.0)
+    }
+
+    fn context_for_payload<'a>(
+        &self,
+        payload: &'a OpExecData,
+    ) -> Result<ExecutionCtxFor<'a, Self>, Self::Error> {
+        ConfigureEngineEvm::<OpExecutionData>::context_for_payload(self, &payload.0)
+    }
+
+    fn tx_iterator_for_payload(
+        &self,
+        payload: &OpExecData,
+    ) -> Result<impl ExecutableTxIterator<Self>, Self::Error> {
+        ConfigureEngineEvm::<OpExecutionData>::tx_iterator_for_payload(self, &payload.0)
     }
 }

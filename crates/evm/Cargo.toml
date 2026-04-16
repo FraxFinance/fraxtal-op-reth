@@ -20,7 +20,7 @@ reth-optimism-chainspec.workspace = true
 reth-optimism-consensus.workspace = true
 reth-optimism-forks.workspace = true
 reth-optimism-primitives.workspace = true
-reth-primitives.workspace = true
+reth-optimism-payload-builder.workspace = true
 reth-primitives-traits.workspace = true
 reth-storage-errors.workspace = true
 
@@ -48,7 +48,7 @@ thiserror.workspace = true
 default = ["std"]
 std = [
     "reth-consensus/std",
-    "reth-primitives/std",
+    "reth-primitives-traits/std",
     "reth-revm/std",
     "alloy-consensus/std",
     "alloy-eips/std",
