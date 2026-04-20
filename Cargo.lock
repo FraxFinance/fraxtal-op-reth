@@ -3014,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "fraxtal-chainspec"
-version = "2.0.0-frax-1.3.2"
+version = "2.0.0-frax-1.3.3"
 dependencies = [
  "alloy-chains",
  "alloy-genesis",
@@ -3031,7 +3031,7 @@ dependencies = [
 
 [[package]]
 name = "fraxtal-evm"
-version = "2.0.0-frax-1.3.2"
+version = "2.0.0-frax-1.3.3"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -3062,7 +3062,7 @@ dependencies = [
 
 [[package]]
 name = "fraxtal-node"
-version = "2.0.0-frax-1.3.2"
+version = "2.0.0-frax-1.3.3"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -3104,7 +3104,7 @@ dependencies = [
 
 [[package]]
 name = "fraxtal-op-evm"
-version = "2.0.0-frax-1.3.2"
+version = "2.0.0-frax-1.3.3"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -3123,7 +3123,7 @@ dependencies = [
 
 [[package]]
 name = "fraxtal-op-reth"
-version = "2.0.0-frax-1.3.2"
+version = "2.0.0-frax-1.3.3"
 dependencies = [
  "alloy-chains",
  "alloy-primitives",

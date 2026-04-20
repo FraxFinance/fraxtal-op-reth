@@ -3,6 +3,10 @@
 # locatable in `./dist/bin/$TARGETARCH`
 FROM --platform=$TARGETPLATFORM ubuntu:24.04
 
+RUN apt-get update && \
+    apt-get install -y ca-certificates libssl-dev pkg-config strace && \
+    rm -rf /var/lib/apt/lists/*
+
 LABEL org.opencontainers.image.source=https://github.com/fraxfinance/fraxtal-op-reth
 LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
 
