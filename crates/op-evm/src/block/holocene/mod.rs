@@ -51,10 +51,8 @@ where
 
                 let mut implementation_acc = load_contract_account(db, implementation_addr)?;
                 implementation_acc.code = Some(Bytecode::new_raw(new_implementation_code.into()));
-                implementation_acc.code_hash = implementation_acc
-                    .code
-                    .as_ref()
-                    .map_or(KECCAK256_EMPTY, |c| c.hash_slow());
+                implementation_acc.code_hash =
+                    implementation_acc.code.as_ref().map_or(KECCAK256_EMPTY, |c| c.hash_slow());
                 let mut implementation_revm_account: Account = implementation_acc.into();
                 implementation_revm_account.mark_touch();
 

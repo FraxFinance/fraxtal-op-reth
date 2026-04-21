@@ -147,10 +147,7 @@ where
     let mut new_implementation_code = current_contract_acc
         .code
         .clone()
-        .unwrap_or_else(|| {
-            db.code_by_hash(current_contract_acc.code_hash)
-                .unwrap_or_default()
-        })
+        .unwrap_or_else(|| db.code_by_hash(current_contract_acc.code_hash).unwrap_or_default())
         .original_byte_slice()
         .to_owned();
 
@@ -160,10 +157,8 @@ where
 
     let mut implementation_acc = db.basic(implementation_addr)?.unwrap_or_default();
     implementation_acc.code = Some(Bytecode::new_raw(new_implementation_code.into()));
-    implementation_acc.code_hash = implementation_acc
-        .code
-        .as_ref()
-        .map_or(KECCAK256_EMPTY, |c| c.hash_slow());
+    implementation_acc.code_hash =
+        implementation_acc.code.as_ref().map_or(KECCAK256_EMPTY, |c| c.hash_slow());
     let mut implementation_revm_account: Account = implementation_acc.into();
     implementation_revm_account.mark_touch();
 
@@ -200,11 +195,7 @@ where
     );
     current_contract_revm_account.storage.insert(
         U256::from(4),
-        EvmStorageSlot::new_changed(
-            U256::default(),
-            U256::from_be_bytes(symbol_storage.into()),
-            0,
-        ),
+        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(symbol_storage.into()), 0),
     );
 
     db.commit(HashMap::from_iter([

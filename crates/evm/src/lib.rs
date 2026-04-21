@@ -137,11 +137,7 @@ where
     }
 
     fn evm_env(&self, header: &Header) -> Result<EvmEnv<OpSpecId>, Self::Error> {
-        Ok(evm_env_for_op_block(
-            header,
-            self.chain_spec(),
-            self.chain_spec().chain().id(),
-        ))
+        Ok(evm_env_for_op_block(header, self.chain_spec(), self.chain_spec().chain().id()))
     }
 
     fn next_evm_env(
@@ -157,9 +153,7 @@ where
                 prev_randao: attributes.prev_randao,
                 gas_limit: attributes.gas_limit,
             },
-            self.chain_spec()
-                .next_block_base_fee(parent, attributes.timestamp)
-                .unwrap_or_default(),
+            self.chain_spec().next_block_base_fee(parent, attributes.timestamp).unwrap_or_default(),
             self.chain_spec(),
             self.chain_spec().chain().id(),
         ))
@@ -219,10 +213,7 @@ where
         let blob_excess_gas_and_price = spec
             .into_eth_spec()
             .is_enabled_in(SpecId::CANCUN)
-            .then_some(BlobExcessGasAndPrice {
-                excess_blob_gas: 0,
-                blob_gasprice: 1,
-            });
+            .then_some(BlobExcessGasAndPrice { excess_blob_gas: 0, blob_gasprice: 1 });
 
         let block_env = BlockEnv {
             number: U256::from(block_number),

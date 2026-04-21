@@ -29,6 +29,9 @@ pub use block::{FraxtalBlockExecutor, FraxtalBlockExecutorFactory};
 /// This is a wrapper type around the `revm` evm with optional [`Inspector`] (tracing)
 /// support. [`Inspector`] support is configurable at runtime because it's part of the underlying
 /// [`OpEvm`](op_revm::OpEvm) type.
+///
+/// The `Tx` type parameter controls the transaction environment type. By default it uses
+/// [`OpTx`] which wraps [`OpTransaction<TxEnv>`] and implements the necessary foreign traits.
 #[allow(missing_debug_implementations)] // missing revm::OpContext Debug impl
 pub struct FraxtalEvm<DB: Database, I, P = OpPrecompiles, Tx = OpTx> {
     inner: op_revm::OpEvm<OpContext<DB>, I, EthInstructions<EthInterpreter, OpContext<DB>>, P>,
@@ -64,11 +67,7 @@ impl<DB: Database, I, P, Tx> FraxtalEvm<DB, I, P, Tx> {
         evm: op_revm::OpEvm<OpContext<DB>, I, EthInstructions<EthInterpreter, OpContext<DB>>, P>,
         inspect: bool,
     ) -> Self {
-        Self {
-            inner: evm,
-            inspect,
-            _tx: PhantomData,
-        }
+        Self { inner: evm, inspect, _tx: PhantomData }
     }
 }
 
@@ -131,18 +130,11 @@ where
         contract: Address,
         data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        self.inner
-            .system_call_with_caller(caller, contract, data)
-            .map_err(map_op_err)
+        self.inner.system_call_with_caller(caller, contract, data).map_err(map_op_err)
     }
 
     fn finish(self) -> (Self::DB, EvmEnv<Self::Spec>) {
-        let Context {
-            block: block_env,
-            cfg: cfg_env,
-            journaled_state,
-            ..
-        } = self.inner.0.ctx;
+        let Context { block: block_env, cfg: cfg_env, journaled_state, .. } = self.inner.0.ctx;
 
         (journaled_state.database, EvmEnv { block_env, cfg_env })
     }
@@ -169,6 +161,10 @@ where
 }
 
 /// Factory producing [`FraxtalEvm`]s.
+///
+/// The `Tx` type parameter controls the transaction type used by the created EVMs.
+/// By default it uses [`OpTx`] which wraps [`OpTransaction<TxEnv>`] and implements
+/// the necessary foreign traits.
 #[derive(Debug)]
 pub struct FraxtalEvmFactory<Tx = OpTx>(PhantomData<Tx>);
 

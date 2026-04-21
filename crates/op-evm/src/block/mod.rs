@@ -19,7 +19,7 @@ use alloy_op_evm::{
     block::{OpAlloyReceiptBuilder, OpTxEnv, receipt_builder::OpReceiptBuilder},
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::Address;
 use canyon::ensure_create2_deployer;
 use op_alloy_consensus::OpDepositReceipt;
 use op_revm::{
@@ -153,16 +153,13 @@ where
             .encoded_bytes()
             .map_or_else(
                 || estimate_tx_compressed_size(tx.tx().encoded_2718().as_ref()),
-                |encoded: &Bytes| estimate_tx_compressed_size(encoded),
+                |encoded| estimate_tx_compressed_size(encoded),
             )
             .saturating_div(1_000_000);
 
         // Load the L1 block contract into the cache. If the L1 block contract is not pre-loaded the
         // database will panic when trying to fetch the DA footprint gas scalar.
-        self.evm
-            .db_mut()
-            .basic(L1_BLOCK_CONTRACT)
-            .map_err(BlockExecutionError::other)?;
+        self.evm.db_mut().basic(L1_BLOCK_CONTRACT).map_err(BlockExecutionError::other)?;
 
         let da_footprint_gas_scalar = L1BlockInfo::fetch_da_footprint_gas_scalar(self.evm.db_mut())
             .map_err(BlockExecutionError::other)?
@@ -187,8 +184,7 @@ where
     type Result = FraxtalTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
-        self.system_caller
-            .apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
+        self.system_caller.apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
         self.system_caller
             .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
 
@@ -227,13 +223,11 @@ where
         // must be no greater than the block's gasLimit.
         let block_available_gas = self.evm.block().gas_limit() - self.gas_used;
         if tx.tx().gas_limit() > block_available_gas && (self.is_regolith || !is_deposit) {
-            return Err(
-                BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
-                    transaction_gas_limit: tx.tx().gas_limit(),
-                    block_available_gas,
-                }
-                .into(),
-            );
+            return Err(BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas {
+                transaction_gas_limit: tx.tx().gas_limit(),
+                block_available_gas,
+            }
+            .into());
         }
 
         let da_footprint_used = if self
@@ -278,12 +272,7 @@ where
 
     fn commit_transaction(&mut self, output: Self::Result) -> Result<u64, BlockExecutionError> {
         let FraxtalTxResult {
-            inner:
-                EthTxResult {
-                    result: ResultAndState { result, state },
-                    blob_gas_used,
-                    tx_type,
-                },
+            inner: EthTxResult { result: ResultAndState { result, state }, blob_gas_used, tx_type },
             is_deposit,
             sender,
         } = output;
@@ -293,17 +282,11 @@ where
         // were not introduced in Bedrock. In addition, regular transactions don't have deposit
         // nonces, so we don't need to touch the DB for those.
         let depositor = (self.is_regolith && is_deposit)
-            .then(|| {
-                self.evm
-                    .db_mut()
-                    .basic(sender)
-                    .map(|acc| acc.unwrap_or_default())
-            })
+            .then(|| self.evm.db_mut().basic(sender).map(|acc| acc.unwrap_or_default()))
             .transpose()
             .map_err(BlockExecutionError::other)?;
 
-        self.system_caller
-            .on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
+        self.system_caller.on_state(StateChangeSource::Transaction(self.receipts.len()), &state);
 
         let gas_used = result.gas_used();
 
@@ -311,11 +294,10 @@ where
         self.gas_used += gas_used;
 
         // Update DA footprint if Jovian is active
-        if self
-            .spec
-            .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
+        if self.spec.is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
             && !is_deposit
         {
+            // Add to DA footprint used
             self.da_footprint_used = self.da_footprint_used.saturating_add(blob_gas_used);
         }
 
@@ -337,21 +319,20 @@ where
                         logs: ctx.result.into_logs(),
                     };
 
-                    self.receipt_builder
-                        .build_deposit_receipt(OpDepositReceipt {
-                            inner: receipt,
-                            deposit_nonce: depositor.map(|account| account.nonce),
-                            // The deposit receipt version was introduced in Canyon to indicate an
-                            // update to how receipt hashes should be computed
-                            // when set. The state transition process ensures
-                            // this is only set for post-Canyon deposit
-                            // transactions.
-                            deposit_receipt_version: (is_deposit
-                                && self.spec.is_canyon_active_at_timestamp(
-                                    self.evm.block().timestamp().saturating_to(),
-                                ))
-                            .then_some(1),
-                        })
+                    self.receipt_builder.build_deposit_receipt(OpDepositReceipt {
+                        inner: receipt,
+                        deposit_nonce: depositor.map(|account| account.nonce),
+                        // The deposit receipt version was introduced in Canyon to indicate an
+                        // update to how receipt hashes should be computed
+                        // when set. The state transition process ensures
+                        // this is only set for post-Canyon deposit
+                        // transactions.
+                        deposit_receipt_version: (is_deposit
+                            && self.spec.is_canyon_active_at_timestamp(
+                                self.evm.block().timestamp().saturating_to(),
+                            ))
+                        .then_some(1),
+                    })
                 }
             },
         );
@@ -381,11 +362,8 @@ where
             })
         })?;
 
-        let legacy_gas_used = self
-            .receipts
-            .last()
-            .map(|r| r.cumulative_gas_used())
-            .unwrap_or_default();
+        let legacy_gas_used =
+            self.receipts.last().map(|r| r.cumulative_gas_used()).unwrap_or_default();
 
         Ok((
             self.evm,
@@ -434,11 +412,7 @@ impl<R, Spec, EvmFactory> FraxtalBlockExecutorFactory<R, Spec, EvmFactory> {
     /// Creates a new [`FraxtalBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
     /// [`OpReceiptBuilder`].
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
-        Self {
-            receipt_builder,
-            spec,
-            evm_factory,
-        }
+        Self { receipt_builder, spec, evm_factory }
     }
 
     /// Exposes the receipt builder.

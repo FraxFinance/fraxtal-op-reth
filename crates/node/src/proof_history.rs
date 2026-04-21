@@ -1,12 +1,11 @@
-//! Node launcher with proof history support.
+//! Node luncher with proof history support.
 
 use crate::node::FraxtalNode;
 use eyre::ErrReport;
 use futures_util::FutureExt;
 use reth_db::DatabaseEnv;
 use reth_db_api::database_metrics::DatabaseMetrics;
-use reth_node_api::FullNodeComponents;
-use reth_node_builder::{NodeBuilder, WithLaunchContext};
+use reth_node_builder::{FullNodeComponents, NodeBuilder, WithLaunchContext};
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_exex::OpProofsExEx;
 use reth_optimism_node::args::RollupArgs;
@@ -20,10 +19,8 @@ use std::{sync::Arc, time::Duration};
 use tokio::time::sleep;
 use tracing::info;
 
-/// Launches the Fraxtal node with optional proof history support.
-///
-/// Supports the following modes:
 /// - no proofs history (plain node),
+/// - in-mem proofs storage,
 /// - MDBX proofs storage.
 pub async fn launch_node_with_proof_history(
     builder: WithLaunchContext<NodeBuilder<DatabaseEnv, OpChainSpec>>,
@@ -37,6 +34,7 @@ pub async fn launch_node_with_proof_history(
         ..
     } = args;
 
+    // Start from a plain FraxtalNode builder
     let mut node_builder = builder.node(FraxtalNode::new(args.clone()));
 
     if proofs_history {
@@ -51,6 +49,7 @@ pub async fn launch_node_with_proof_history(
                 .map_err(|e| eyre::eyre!("Failed to create MdbxProofsStorage: {e}"))?,
         );
         let storage: OpProofsStorage<Arc<MdbxProofsStorage>> = mdbx.clone().into();
+
         let storage_exec = storage.clone();
 
         node_builder = node_builder
@@ -72,6 +71,7 @@ pub async fn launch_node_with_proof_history(
                     .boxed())
             })
             .extend_rpc_modules(move |ctx| {
+                info!(target: "reth::cli", "Installing proofs-history RPC overrides (eth_getProof, debug_executePayload)");
                 let api_ext = EthApiExt::new(ctx.registry.eth_api().clone(), storage.clone());
                 let debug_ext = DebugApiExt::new(
                     ctx.node().provider().clone(),
@@ -80,16 +80,17 @@ pub async fn launch_node_with_proof_history(
                     ctx.node().task_executor().clone(),
                     ctx.node().evm_config().clone(),
                 );
-                ctx.modules.replace_configured(api_ext.into_rpc())?;
-                ctx.modules.replace_configured(debug_ext.into_rpc())?;
+                let eth_replaced = ctx.modules.replace_configured(api_ext.into_rpc())?;
+                let debug_replaced = ctx.modules.replace_configured(debug_ext.into_rpc())?;
+                info!(target: "reth::cli", eth_replaced, debug_replaced, "Proofs-history RPC overrides installed");
                 Ok(())
             });
     }
 
+    // In all cases (with or without proofs), launch the node.
     let handle = node_builder.launch_with_debug_capabilities().await?;
     handle.node_exit_future.await
 }
-
 /// Spawns a task that periodically reports metrics for the proofs DB.
 fn spawn_proofs_db_metrics(
     executor: TaskExecutor,

@@ -41,7 +41,10 @@ mod tests {
     #[test]
     fn parse_known_chain_spec() {
         for &chain in FraxtalChainSpecParser::SUPPORTED_CHAINS {
-            assert!(<FraxtalChainSpecParser as ChainSpecParser>::parse(chain).is_ok());
+            assert!(
+                <FraxtalChainSpecParser as ChainSpecParser>::parse(chain).is_ok(),
+                "Failed to parse {chain}"
+            );
         }
     }
 }

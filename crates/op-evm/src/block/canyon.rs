@@ -37,9 +37,7 @@ where
 
         // Update the account info with the create2 deployer codehash and bytecode.
         acc_info.code_hash = CREATE_2_DEPLOYER_CODEHASH;
-        acc_info.code = Some(Bytecode::new_raw(Bytes::from_static(
-            &CREATE_2_DEPLOYER_BYTECODE,
-        )));
+        acc_info.code = Some(Bytecode::new_raw(Bytes::from_static(&CREATE_2_DEPLOYER_BYTECODE)));
 
         // Convert the cache account back into a revm account and mark it as touched.
         let mut revm_acc: revm::state::Account = acc_info.into();

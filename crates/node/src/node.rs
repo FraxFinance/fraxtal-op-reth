@@ -44,10 +44,7 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
 
         let timestamp = std::cmp::max(
             parent.timestamp().saturating_add(1),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
         );
 
         let eth_attrs = alloy_rpc_types_engine::PayloadAttributes {
@@ -64,6 +61,12 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
                 .then(alloy_primitives::B256::random),
         };
 
+        /// Dummy system transaction for dev mode.
+        /// OP Mainnet transaction at index 0 in block 124665056.
+        const TX_SET_L1_BLOCK: [u8; 251] = alloy_primitives::hex!(
+            "7ef8f8a0683079df94aa5b9cf86687d739a60a9b4f0835e520ec4d664e2e415dca17a6df94deaddeaddeaddeaddeaddeaddeaddeaddead00019442000000000000000000000000000000000000158080830f424080b8a4440a5e200000146b000f79c500000000000000040000000066d052e700000000013ad8a3000000000000000000000000000000000000000000000000000000003ef1278700000000000000000000000000000000000000000000000000000000000000012fdf87b89884a61e74b322bbcf60386f543bfae7827725efaaf0ab1de2294a590000000000000000000000006887246668a3b87f54deb3b94ba47a6f63f32985"
+        );
+
         let default_params = BaseFeeParams::optimism();
         let denominator = std::env::var("OP_DEV_EIP1559_DENOMINATOR")
             .ok()
@@ -73,9 +76,7 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(default_params.elasticity_multiplier as u32);
-        let gas_limit = std::env::var("OP_DEV_GAS_LIMIT")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok());
+        let gas_limit = std::env::var("OP_DEV_GAS_LIMIT").ok().and_then(|v| v.parse::<u64>().ok());
 
         let mut eip1559_bytes = [0u8; 8];
         eip1559_bytes[0..4].copy_from_slice(&denominator.to_be_bytes());
@@ -83,7 +84,7 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
 
         OpPayloadAttrs(op_alloy_rpc_types_engine::OpPayloadAttributes {
             payload_attributes: eth_attrs,
-            transactions: None,
+            transactions: Some(vec![TX_SET_L1_BLOCK.into()]),
             no_tx_pool: None,
             gas_limit,
             eip_1559_params: Some(B64::from(eip1559_bytes)),
@@ -148,14 +149,11 @@ impl FraxtalNode {
     where
         Node: FullNodeTypes<Types: OpNodeTypes>,
     {
-        let RollupArgs {
-            disable_txpool_gossip,
-            compute_pending_block,
-            discovery_v4,
-            ..
-        } = self.args;
+        let RollupArgs { disable_txpool_gossip, compute_pending_block, discovery_v4, .. } =
+            self.args;
         ComponentsBuilder::default()
             .node_types::<Node>()
+            .executor(FraxtalExecutorBuilder::default())
             .pool(
                 OpPoolBuilder::default()
                     .with_enable_tx_conditional(self.args.enable_tx_conditional)
@@ -164,7 +162,6 @@ impl FraxtalNode {
                         self.args.supervisor_safety_level,
                     ),
             )
-            .executor(FraxtalExecutorBuilder::default())
             .payload(BasicPayloadServiceBuilder::new(
                 OpPayloadBuilder::new(compute_pending_block)
                     .with_da_config(self.da_config.clone())
@@ -199,24 +196,29 @@ impl FraxtalNode {
     /// use reth_optimism_chainspec::BASE_MAINNET;
     /// use reth_optimism_node::OpNode;
     ///
-    /// let factory =
-    ///     OpNode::provider_factory_builder().open_read_only(BASE_MAINNET.clone(), "datadir").unwrap();
+    /// fn demo(runtime: reth_tasks::Runtime) {
+    ///     let factory = OpNode::provider_factory_builder()
+    ///         .open_read_only(BASE_MAINNET.clone(), "datadir", runtime)
+    ///         .unwrap();
+    /// }
     /// ```
     ///
-    /// # Open a Providerfactory manually with all required components
+    /// # Open a Providerfactory with custom config
     ///
     /// ```no_run
-    /// use reth_db::open_db_read_only;
     /// use reth_optimism_chainspec::OpChainSpecBuilder;
     /// use reth_optimism_node::OpNode;
-    /// use reth_provider::providers::StaticFileProvider;
-    /// use std::sync::Arc;
+    /// use reth_provider::providers::ReadOnlyConfig;
     ///
-    /// let factory = OpNode::provider_factory_builder()
-    ///     .db(Arc::new(open_db_read_only("db", Default::default()).unwrap()))
-    ///     .chainspec(OpChainSpecBuilder::base_mainnet().build().into())
-    ///     .static_file(StaticFileProvider::read_only("db/static_files", false).unwrap())
-    ///     .build_provider_factory();
+    /// fn demo(runtime: reth_tasks::Runtime) {
+    ///     let factory = OpNode::provider_factory_builder()
+    ///         .open_read_only(
+    ///             OpChainSpecBuilder::base_mainnet().build().into(),
+    ///             ReadOnlyConfig::from_datadir("datadir").no_watch(),
+    ///             runtime,
+    ///         )
+    ///         .unwrap();
+    /// }
     /// ```
     pub fn provider_factory_builder() -> ProviderFactoryBuilder<Self> {
         ProviderFactoryBuilder::default()
@@ -266,9 +268,7 @@ where
     fn local_payload_attributes_builder(
         chain_spec: &Self::ChainSpec,
     ) -> impl PayloadAttributesBuilder<<Self::Payload as PayloadTypes>::PayloadAttributes> {
-        OpLocalPayloadAttributesBuilder {
-            chain_spec: Arc::new(chain_spec.clone()),
-        }
+        OpLocalPayloadAttributesBuilder { chain_spec: Arc::new(chain_spec.clone()) }
     }
 }
 
@@ -280,7 +280,7 @@ impl NodeTypes for FraxtalNode {
 }
 
 /// A regular optimism evm and executor builder.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Copy, Clone, Default)]
 #[non_exhaustive]
 pub struct FraxtalExecutorBuilder;
 
@@ -299,4 +299,3 @@ where
         Ok(evm_config)
     }
 }
-
