@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::network::FraxtalNetworkBuilder;
 use fraxtal_evm::FraxtalEvmConfig;
 use reth_chainspec::{BaseFeeParams, EthereumHardforks};
 use reth_node_api::{FullNodeComponents, PayloadAttributesBuilder, PayloadTypes};
@@ -16,8 +17,8 @@ use reth_optimism_node::{
     OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpStorage,
     args::RollupArgs,
     node::{
-        OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNetworkBuilder, OpNodeTypes,
-        OpPayloadBuilder, OpPoolBuilder,
+        OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNodeTypes, OpPayloadBuilder,
+        OpPoolBuilder,
     },
 };
 use reth_optimism_payload_builder::{
@@ -117,7 +118,7 @@ pub type FraxtalNodeComponentBuilder<Node, Payload = OpPayloadBuilder> = Compone
     Node,
     OpPoolBuilder,
     BasicPayloadServiceBuilder<Payload>,
-    OpNetworkBuilder,
+    FraxtalNetworkBuilder,
     FraxtalExecutorBuilder,
     OpConsensusBuilder,
 >;
@@ -167,7 +168,7 @@ impl FraxtalNode {
                     .with_da_config(self.da_config.clone())
                     .with_gas_limit_config(self.gas_limit_config.clone()),
             ))
-            .network(OpNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
+            .network(FraxtalNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
             .consensus(OpConsensusBuilder::default())
     }
 
@@ -233,7 +234,7 @@ where
         N,
         OpPoolBuilder,
         BasicPayloadServiceBuilder<OpPayloadBuilder>,
-        OpNetworkBuilder,
+        FraxtalNetworkBuilder,
         FraxtalExecutorBuilder,
         OpConsensusBuilder,
     >;

@@ -9,10 +9,12 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+fraxtal-chainspec.workspace = true
 fraxtal-evm.workspace = true
 
 reth-basic-payload-builder.workspace = true
 reth-evm.workspace = true
+reth-network.workspace = true
 reth-node-api.workspace = true
 reth-chainspec.workspace = true
 reth-engine-local.workspace = true
@@ -33,6 +35,7 @@ reth-node-builder.workspace = true
 reth-db.workspace = true
 reth-db-api.workspace = true
 reth-tasks.workspace = true
+reth-transaction-pool.workspace = true
 reth-trie-db.workspace = true
 revm.workspace = true
 tracing.workspace = true

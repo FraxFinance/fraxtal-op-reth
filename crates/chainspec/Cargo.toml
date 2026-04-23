@@ -12,6 +12,7 @@ workspace = true
 reth-chainspec.workspace = true
 reth-ethereum-forks.workspace = true
 reth-cli.workspace = true
+reth-network-peers.workspace = true
 reth-optimism-chainspec.workspace = true
 reth-optimism-forks.workspace = true
 reth-primitives-traits.workspace = true

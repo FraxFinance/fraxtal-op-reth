@@ -4,8 +4,14 @@ use reth_cli::chainspec::{ChainSpecParser, parse_genesis};
 use reth_optimism_chainspec::OpChainSpec;
 use std::sync::Arc;
 
+pub mod bootnodes;
 mod fraxtal;
 mod fraxtal_hoodi_testnet;
+
+pub use bootnodes::{
+    FRAXTAL_HOODI_TESTNET_BOOTNODES, FRAXTAL_MAINNET_BOOTNODES, fraxtal_bootnodes,
+    fraxtal_hoodi_testnet_nodes, fraxtal_mainnet_nodes,
+};
 
 /// Fraxtal chain specification parser.
 #[derive(Debug, Clone, Default)]
