@@ -50,8 +50,8 @@ pub(super) fn migrate_frxusd<DB>(
 where
     DB: Database + DatabaseCommit,
 {
-    if chain_spec.is_granite_active_at_timestamp(timestamp)
-        && !chain_spec.is_granite_active_at_timestamp(timestamp.saturating_sub(2))
+    if chain_spec.is_granite_active_at_timestamp(timestamp) &&
+        !chain_spec.is_granite_active_at_timestamp(timestamp.saturating_sub(2))
     {
         info!(target: "evm", "Forcing frxusd upgrade on Granite transition");
 

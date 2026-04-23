@@ -24,8 +24,8 @@ pub(super) fn migrate_frax_holocene<DB>(
 where
     DB: Database + DatabaseCommit,
 {
-    if chain_spec.is_holocene_active_at_timestamp(timestamp)
-        && !chain_spec.is_holocene_active_at_timestamp(timestamp.saturating_sub(2))
+    if chain_spec.is_holocene_active_at_timestamp(timestamp) &&
+        !chain_spec.is_holocene_active_at_timestamp(timestamp.saturating_sub(2))
     {
         info!(target: "evm", "Forcing frax upgrades on Holocene transition");
 

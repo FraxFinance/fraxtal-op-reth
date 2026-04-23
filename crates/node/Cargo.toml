@@ -44,6 +44,7 @@ futures-util.workspace = true
 tokio.workspace = true
 alloy-consensus.workspace = true
 alloy-primitives.workspace = true
+alloy-rlp.workspace = true
 alloy-rpc-types-engine.workspace = true
 alloy-rpc-types-eth.workspace = true
 op-alloy-consensus.workspace = true

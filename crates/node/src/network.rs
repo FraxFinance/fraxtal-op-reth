@@ -50,8 +50,7 @@ impl FraxtalNetworkBuilder {
         let chain_id = ctx.chain_spec().chain().id();
         // Respect --bootnodes when set; otherwise fall back to Fraxtal's built-in list
         // (upstream reth would fall back to Ethereum mainnet bootnodes here).
-        let fraxtal_nodes =
-            args.bootnodes.is_none().then(|| fraxtal_bootnodes(chain_id)).flatten();
+        let fraxtal_nodes = args.bootnodes.is_none().then(|| fraxtal_bootnodes(chain_id)).flatten();
 
         let mut builder = ctx.network_config_builder()?;
         if let Some(nodes) = &fraxtal_nodes {
@@ -75,9 +74,32 @@ impl FraxtalNetworkBuilder {
                     .or(fraxtal_nodes)
                     .or_else(|| ctx.chain_spec().bootnodes())
                     .unwrap_or_default();
-                builder = builder.discovery_v5(
-                    args.discovery.discovery_v5_builder(rlpx_socket, discv5_bootnodes),
-                );
+
+                let mut discv5_builder =
+                    args.discovery.discovery_v5_builder(rlpx_socket, discv5_bootnodes);
+
+                // Workaround for https://github.com/paradigmxyz/reth/pull/23639 (open
+                // upstream): when the listen address is unspecified (0.0.0.0) and the
+                // user provides --nat extip:<IP>, reth's `build_local_enr` skips
+                // setting the ENR `ip` field, leaving the node undiscoverable over
+                // discv5. Inject the resolved external IPv4 directly as the standard
+                // ENR `ip` kv pair (RLP-encoded octets, matching `enr::Builder::ip4`).
+                if args.addr.is_unspecified() &&
+                    let Some(std::net::IpAddr::V4(ip)) = args.nat.clone().as_external_ip(0) &&
+                    !ip.is_unspecified()
+                {
+                    info!(
+                        target: "reth::cli",
+                        %ip,
+                        "Injecting NAT external IPv4 into discv5 ENR (listen addr is unspecified)",
+                    );
+                    discv5_builder = discv5_builder.add_enr_kv_pair(
+                        b"ip",
+                        alloy_primitives::Bytes::from(alloy_rlp::encode(ip.octets().as_slice())),
+                    );
+                }
+
+                builder = builder.discovery_v5(discv5_builder);
             }
             builder
         });

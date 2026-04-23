@@ -232,8 +232,8 @@ where
 
         let da_footprint_used = if self
             .spec
-            .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
-            && !is_deposit
+            .is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to()) &&
+            !is_deposit
         {
             let da_footprint_available = self.evm.block().gas_limit() - self.da_footprint_used;
 
@@ -294,8 +294,8 @@ where
         self.gas_used += gas_used;
 
         // Update DA footprint if Jovian is active
-        if self.spec.is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to())
-            && !is_deposit
+        if self.spec.is_jovian_active_at_timestamp(self.evm.block().timestamp().saturating_to()) &&
+            !is_deposit
         {
             // Add to DA footprint used
             self.da_footprint_used = self.da_footprint_used.saturating_add(blob_gas_used);
@@ -327,8 +327,8 @@ where
                         // when set. The state transition process ensures
                         // this is only set for post-Canyon deposit
                         // transactions.
-                        deposit_receipt_version: (is_deposit
-                            && self.spec.is_canyon_active_at_timestamp(
+                        deposit_receipt_version: (is_deposit &&
+                            self.spec.is_canyon_active_at_timestamp(
                                 self.evm.block().timestamp().saturating_to(),
                             ))
                         .then_some(1),

@@ -3069,6 +3069,7 @@ version = "2.1.0-frax-1.3.4"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
+ "alloy-rlp",
  "alloy-rpc-types-engine",
  "alloy-rpc-types-eth",
  "eyre",
