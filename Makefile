@@ -76,9 +76,15 @@ reproducible: ## Build the reth binary into `target` directory with reproducible
 build-debug: ## Build the fraxtal-op-reth binary into `target/debug` directory.
 	cargo build --bin fraxtal-op-reth --features "$(FEATURES)"
 
-# Builds the reth binary natively.
+# Builds the fraxtal-op-reth binary natively.
 build-native-%:
 	cargo build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --locked
+	$(MAKE) build-native-bootnode-$*
+
+# Builds the fraxtal-bootnode binary natively.
+# Bootnode only supports the `jemalloc` feature; uses defaults otherwise.
+build-native-bootnode-%:
+	cargo build --bin fraxtal-bootnode --target $* --profile "$(PROFILE)" --locked
 
 # The following commands use `cross` to build a cross-compile.
 #
@@ -105,6 +111,8 @@ build-x86_64-pc-windows-gnu: FEATURES := $(filter-out jemalloc jemalloc-prof,$(F
 build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
 		cross build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
+	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
+		cross build --bin fraxtal-bootnode --target $* --profile "$(PROFILE)"
 
 # Unfortunately we can't easily use cross to build for Darwin because of licensing issues.
 # If we wanted to, we would need to build a custom Docker image with the SDK available.
@@ -222,10 +230,12 @@ define docker_build_push
 	$(MAKE) build-x86_64-unknown-linux-gnu
 	mkdir -p $(BIN_DIR)/amd64
 	cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/fraxtal-op-reth $(BIN_DIR)/amd64/fraxtal-op-reth
+	cp $(CARGO_TARGET_DIR)/x86_64-unknown-linux-gnu/$(PROFILE)/fraxtal-bootnode $(BIN_DIR)/amd64/fraxtal-bootnode
 
 	$(MAKE) build-aarch64-unknown-linux-gnu
 	mkdir -p $(BIN_DIR)/arm64
 	cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/fraxtal-op-reth $(BIN_DIR)/arm64/fraxtal-op-reth
+	cp $(CARGO_TARGET_DIR)/aarch64-unknown-linux-gnu/$(PROFILE)/fraxtal-bootnode $(BIN_DIR)/arm64/fraxtal-bootnode
 
 	docker buildx build --file ./Dockerfile.cross . \
 		--platform linux/amd64,linux/arm64 \

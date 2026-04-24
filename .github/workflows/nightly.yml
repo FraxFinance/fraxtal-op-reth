@@ -26,11 +26,17 @@ jobs:
           cache-on-failure: true
       - name: Build
         run: make PROFILE=maxperf build-native-x86_64-unknown-linux-gnu
-      - name: Upload artifact
+      - name: Upload fraxtal-op-reth artifact
         uses: actions/upload-artifact@v4
         with:
           name: fraxtal-op-reth-x86
           path: target/x86_64-unknown-linux-gnu/maxperf/fraxtal-op-reth
+          retention-days: 1
+      - name: Upload fraxtal-bootnode artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fraxtal-bootnode-x86
+          path: target/x86_64-unknown-linux-gnu/maxperf/fraxtal-bootnode
           retention-days: 1
   build-arm:
     name: Build arm binary
@@ -44,11 +50,17 @@ jobs:
           cache-on-failure: true
       - name: Build
         run: make PROFILE=maxperf build-native-aarch64-unknown-linux-gnu
-      - name: Upload artifact
+      - name: Upload fraxtal-op-reth artifact
         uses: actions/upload-artifact@v4
         with:
           name: fraxtal-op-reth-arm
           path: target/aarch64-unknown-linux-gnu/maxperf/fraxtal-op-reth
+          retention-days: 1
+      - name: Upload fraxtal-bootnode artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fraxtal-bootnode-arm
+          path: target/aarch64-unknown-linux-gnu/maxperf/fraxtal-bootnode
           retention-days: 1
 
   build-docker:
@@ -65,16 +77,26 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username ${DOCKER_USERNAME} --password-stdin
       - name: Create artifacts dirs
         run: mkdir -p dist/bin/{amd64,arm64}
-      - name: Download x86 artifact
+      - name: Download fraxtal-op-reth x86 artifact
         uses: actions/download-artifact@v4
         with:
           name: fraxtal-op-reth-x86
           path: dist/bin/amd64/fraxtal-op-reth
-      - name: Download arm artifact
+      - name: Download fraxtal-op-reth arm artifact
         uses: actions/download-artifact@v4
         with:
           name: fraxtal-op-reth-arm
           path: dist/bin/arm64/fraxtal-op-reth
+      - name: Download fraxtal-bootnode x86 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fraxtal-bootnode-x86
+          path: dist/bin/amd64/fraxtal-bootnode
+      - name: Download fraxtal-bootnode arm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: fraxtal-bootnode-arm
+          path: dist/bin/arm64/fraxtal-bootnode
       - name: Set up Docker builder
         run: docker buildx create --use --name fraxtal
       - name: Build and push fraxtal-op-reth nightly image

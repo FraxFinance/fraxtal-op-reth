@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bin/fraxtal-op-reth",
+    "bin/fraxtal-bootnode",
     "crates/node",
     "crates/evm",
     "crates/op-evm"
@@ -30,8 +31,12 @@ reth-ethereum-forks = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0
 reth-evm = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-execution-types = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-node-api = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
+reth-discv4 = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
+reth-discv5 = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
+reth-net-nat = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-network = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-network-peers = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
+reth-tracing = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-node-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-payload-builder = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
 reth-payload-builder-primitives = { git = "https://github.com/paradigmxyz/reth", tag = "v2.0.0" }
@@ -93,6 +98,8 @@ tracing = { version = "0.1.0", default-features = false }
 eyre = "0.6"
 futures-util = "0.3"
 tokio = { version = "1", default-features = false }
+tokio-stream = "0.1"
+secp256k1 = { version = "0.30", default-features = false, features = ["global-context", "std", "recovery"] }
 thiserror = { version = "2.0.0", default-features = false }
 derive_more = { version = "2", default-features = false, features = ["full"] }
 
