@@ -24,7 +24,7 @@ use reth_cli_util::{get_secret_key, load_secret_key::rng_secret_key};
 use reth_discv4::{Discv4, Discv4Config, DiscoveryUpdate, NatResolver};
 use reth_discv5::{
     Config, Discv5,
-    discv5::{Enr, Event, enr::NodeId},
+    discv5::{ConfigBuilder as Discv5ConfigBuilder, Enr, Event, ListenConfig, enr::NodeId},
 };
 use reth_network_peers::NodeRecord;
 use secp256k1::SecretKey;
@@ -55,9 +55,15 @@ struct Args {
     #[arg(long, default_value = "any")]
     nat: NatResolver,
 
-    /// Also run a discv5 service on the same address.
+    /// Also run a discv5 service. Shares `--addr`'s IP; port defaults to 9200, override with
+    /// `--v5-port`.
     #[arg(long)]
     v5: bool,
+
+    /// UDP port for discv5 (only used when `--v5` is set). Defaults to reth's standard
+    /// `DEFAULT_DISCOVERY_V5_PORT` (9200).
+    #[arg(long, default_value_t = 9200)]
+    v5_port: u16,
 
     /// Log output format.
     #[arg(long, value_enum, default_value_t = LogFormat::Terminal)]
@@ -136,7 +142,14 @@ async fn main() -> eyre::Result<()> {
     let mut discv5_updates = None;
     let mut discv5_handle: Option<Discv5> = None;
     if args.v5 {
-        let mut builder = Config::builder(args.addr);
+        // Build an explicit discv5 listen config so --v5-port is honored. `Config::builder`
+        // alone defers to `DEFAULT_DISCOVERY_V5_PORT` (9200) when no discv5_config is provided.
+        let v5_listen = match args.addr {
+            SocketAddr::V4(v4) => ListenConfig::Ipv4 { ip: *v4.ip(), port: args.v5_port },
+            SocketAddr::V6(v6) => ListenConfig::Ipv6 { ip: *v6.ip(), port: args.v5_port },
+        };
+        let discv5_inner = Discv5ConfigBuilder::new(v5_listen).build();
+        let mut builder = Config::builder(args.addr).discv5_config(discv5_inner);
 
         // Workaround for https://github.com/paradigmxyz/reth/pull/23639 (open upstream): when the
         // listen address is unspecified (0.0.0.0) and the user provides --nat extip:<IP>, reth's
@@ -155,7 +168,11 @@ async fn main() -> eyre::Result<()> {
         }
 
         let (handle, updates) = Discv5::start(&sk, builder.build()).await?;
-        info!(rescue_unverifiable = args.rescue_unverifiable, "Started discv5");
+        info!(
+            port = args.v5_port,
+            rescue_unverifiable = args.rescue_unverifiable,
+            "Started discv5",
+        );
         discv5_updates = Some(updates);
         discv5_handle = Some(handle);
     }
