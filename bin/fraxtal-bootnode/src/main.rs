@@ -25,6 +25,7 @@ use secp256k1::SecretKey;
 use tokio::select;
 use tokio_stream::StreamExt;
 use tracing::info;
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -62,7 +63,10 @@ impl Args {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    reth_tracing::init_test_tracing();
+    // Default to `info` when RUST_LOG is unset so operators see startup/peer events
+    // without having to remember the env var.
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
     let args = Args::parse();
     info!(?args, "Fraxtal bootnode starting");

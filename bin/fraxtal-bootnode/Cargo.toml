@@ -14,7 +14,6 @@ reth-discv4.workspace = true
 reth-discv5.workspace = true
 reth-net-nat.workspace = true
 reth-network-peers = { workspace = true, features = ["secp256k1"] }
-reth-tracing.workspace = true
 
 alloy-primitives.workspace = true
 alloy-rlp.workspace = true
@@ -26,6 +25,7 @@ secp256k1.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-stream.workspace = true
 tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bin]]
 name = "fraxtal-bootnode"
