@@ -12,11 +12,12 @@
 #![allow(missing_docs, rustdoc::missing_crate_level_docs)]
 
 use std::{
+    io::IsTerminal,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use reth_cli_util::{get_secret_key, load_secret_key::rng_secret_key};
 use reth_discv4::{Discv4, Discv4Config, DiscoveryUpdate, NatResolver};
 use reth_discv5::{Config, Discv5, discv5::Event};
@@ -25,7 +26,9 @@ use secp256k1::SecretKey;
 use tokio::select;
 use tokio_stream::StreamExt;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{
+    EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
@@ -50,6 +53,44 @@ struct Args {
     /// Also run a discv5 service on the same address.
     #[arg(long)]
     v5: bool,
+
+    /// Log output format.
+    #[arg(long, value_enum, default_value_t = LogFormat::Terminal)]
+    log_format: LogFormat,
+
+    /// When to colorize log output.
+    #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
+    color: ColorChoice,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum LogFormat {
+    /// Human-readable text (default).
+    Terminal,
+    /// One JSON object per line.
+    Json,
+    /// `key=value` logfmt (https://brandur.org/logfmt).
+    Logfmt,
+}
+
+#[derive(Copy, Clone, Debug, ValueEnum)]
+enum ColorChoice {
+    /// Color when stderr is a TTY, plain otherwise.
+    Auto,
+    /// Always emit ANSI color escapes.
+    Always,
+    /// Never emit ANSI color escapes.
+    Never,
+}
+
+impl ColorChoice {
+    fn enabled(self) -> bool {
+        match self {
+            Self::Always => true,
+            Self::Never => false,
+            Self::Auto => std::io::stderr().is_terminal(),
+        }
+    }
 }
 
 impl Args {
@@ -63,12 +104,8 @@ impl Args {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    // Default to `info` when RUST_LOG is unset so operators see startup/peer events
-    // without having to remember the env var.
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
-
     let args = Args::parse();
+    init_tracing(args.log_format, args.color);
     info!(?args, "Fraxtal bootnode starting");
 
     let sk = args.secret_key()?;
@@ -144,4 +181,32 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+/// Install a global tracing subscriber that writes to stderr.
+///
+/// Defaults to `info` when `RUST_LOG` is unset so operators see startup and peer
+/// events without having to remember the env var.
+fn init_tracing(format: LogFormat, color: ColorChoice) {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let ansi = color.enabled();
+    let registry = tracing_subscriber::registry().with(filter);
+
+    match format {
+        LogFormat::Terminal => registry
+            .with(fmt::layer().with_writer(std::io::stderr).with_ansi(ansi))
+            .init(),
+        LogFormat::Json => registry
+            .with(fmt::layer().json().with_writer(std::io::stderr).with_ansi(ansi))
+            .init(),
+        // logfmt has no built-in color, but it supports ANSI on the level field via the builder.
+        LogFormat::Logfmt => registry
+            .with(
+                tracing_logfmt::builder()
+                    .with_ansi_color(ansi)
+                    .layer()
+                    .with_writer(std::io::stderr),
+            )
+            .init(),
+    }
 }

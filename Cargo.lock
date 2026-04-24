@@ -3032,6 +3032,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+ "tracing-logfmt",
  "tracing-subscriber 0.3.23",
 ]
 
@@ -10796,6 +10797,7 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a250055a3518b5efba928a18ffac8d32d42ea607a9affff4532144cd5b2e378e"
 dependencies = [
+ "nu-ansi-term",
  "time",
  "tracing",
  "tracing-core",
