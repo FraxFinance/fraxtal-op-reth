@@ -76,15 +76,14 @@ reproducible: ## Build the reth binary into `target` directory with reproducible
 build-debug: ## Build the fraxtal-op-reth binary into `target/debug` directory.
 	cargo build --bin fraxtal-op-reth --features "$(FEATURES)"
 
-# Builds the fraxtal-op-reth binary natively.
+# Builds the fraxtal-op-reth and fraxtal-bootnode binaries natively.
+# `-p fraxtal-bootnode` is explicit because the workspace sets
+# `default-members = ["bin/fraxtal-op-reth"]`, which otherwise hides the bootnode
+# bin from `cargo build --bin ...`. Bootnode only supports the `jemalloc`
+# feature so it uses default features rather than the full $(FEATURES) list.
 build-native-%:
 	cargo build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)" --locked
-	$(MAKE) build-native-bootnode-$*
-
-# Builds the fraxtal-bootnode binary natively.
-# Bootnode only supports the `jemalloc` feature; uses defaults otherwise.
-build-native-bootnode-%:
-	cargo build --bin fraxtal-bootnode --target $* --profile "$(PROFILE)" --locked
+	cargo build -p fraxtal-bootnode --bin fraxtal-bootnode --target $* --profile "$(PROFILE)" --locked
 
 # The following commands use `cross` to build a cross-compile.
 #
@@ -112,7 +111,7 @@ build-%:
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
 		cross build --bin fraxtal-op-reth --target $* --features "$(FEATURES)" --profile "$(PROFILE)"
 	RUSTFLAGS="-C link-arg=-lgcc -Clink-arg=-static-libgcc" \
-		cross build --bin fraxtal-bootnode --target $* --profile "$(PROFILE)"
+		cross build -p fraxtal-bootnode --bin fraxtal-bootnode --target $* --profile "$(PROFILE)"
 
 # Unfortunately we can't easily use cross to build for Darwin because of licensing issues.
 # If we wanted to, we would need to build a custom Docker image with the SDK available.
