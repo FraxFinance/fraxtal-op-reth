@@ -17,15 +17,20 @@ use std::{
     path::PathBuf,
 };
 
+use std::time::Duration;
+
 use clap::{Parser, ValueEnum};
 use reth_cli_util::{get_secret_key, load_secret_key::rng_secret_key};
 use reth_discv4::{Discv4, Discv4Config, DiscoveryUpdate, NatResolver};
-use reth_discv5::{Config, Discv5, discv5::Event};
+use reth_discv5::{
+    Config, Discv5,
+    discv5::{Enr, Event, enr::NodeId},
+};
 use reth_network_peers::NodeRecord;
 use secp256k1::SecretKey;
 use tokio::select;
 use tokio_stream::StreamExt;
-use tracing::info;
+use tracing::{debug, info, warn};
 use tracing_subscriber::{
     EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -61,6 +66,13 @@ struct Args {
     /// When to colorize log output.
     #[arg(long, value_enum, default_value_t = ColorChoice::Auto)]
     color: ColorChoice,
+
+    /// When discv5 reports an "unverifiable" ENR (peer's source UDP port differs from the port
+    /// in its ENR — typical of symmetric NAT behind k8s/cloud NAT), proactively PING the
+    /// ENR-claimed address. If it responds, re-add the ENR to the routing table so we can
+    /// gossip it to other peers via NEIGHBORS responses. Disabled with `--no-rescue-unverifiable`.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    rescue_unverifiable: bool,
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -122,6 +134,7 @@ async fn main() -> eyre::Result<()> {
 
     // discv5 (optional)
     let mut discv5_updates = None;
+    let mut discv5_handle: Option<Discv5> = None;
     if args.v5 {
         let mut builder = Config::builder(args.addr);
 
@@ -141,9 +154,10 @@ async fn main() -> eyre::Result<()> {
             );
         }
 
-        let (_discv5, updates) = Discv5::start(&sk, builder.build()).await?;
-        info!("Started discv5");
+        let (handle, updates) = Discv5::start(&sk, builder.build()).await?;
+        info!(rescue_unverifiable = args.rescue_unverifiable, "Started discv5");
         discv5_updates = Some(updates);
+        discv5_handle = Some(handle);
     }
 
     loop {
@@ -171,6 +185,21 @@ async fn main() -> eyre::Result<()> {
                 Some(Event::SessionEstablished(enr, _)) => {
                     info!(peer_id = ?enr.id(), "(discv5) new peer added");
                 }
+                Some(Event::UnverifiableEnr { enr, socket, node_id }) => {
+                    if !args.rescue_unverifiable {
+                        debug!(?node_id, observed = %socket, "(discv5) unverifiable ENR (rescue disabled)");
+                        continue;
+                    }
+                    // Symmetric NAT typically rewrites the source UDP port of outgoing packets,
+                    // so a peer that PINGs us from ephemeral port X may still be perfectly
+                    // reachable on the listening port Y advertised in its ENR. discv5 discards
+                    // the ENR on observed/claimed mismatch; we proactively verify the claimed
+                    // address ourselves and re-add if it answers.
+                    if let Some(d) = &discv5_handle {
+                        let d = d.clone();
+                        tokio::spawn(verify_and_readd(d, enr, socket, node_id));
+                    }
+                }
                 Some(_) => {}
                 None => {
                     info!("(discv5) update stream ended");
@@ -181,6 +210,59 @@ async fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+/// PING the ENR-claimed address out-of-band; if it answers, re-add the ENR to the routing
+/// table so we can gossip it in NEIGHBORS responses. Used to "rescue" peers behind symmetric
+/// NAT whose source UDP port doesn't match their advertised listening port.
+///
+/// The PING goes through discv5's normal session machinery, so a successful PONG implies the
+/// claimed address is reachable from the bootnode's perspective — and therefore likely
+/// reachable from other peers we'd gossip the ENR to.
+async fn verify_and_readd(discv5: Discv5, enr: Enr, observed: SocketAddr, node_id: NodeId) {
+    let claimed = match (enr.udp4_socket(), enr.udp6_socket()) {
+        (Some(v4), _) => SocketAddr::V4(v4),
+        (None, Some(v6)) => SocketAddr::V6(v6),
+        (None, None) => {
+            debug!(?node_id, observed = %observed, "(discv5) ENR has no udp socket; cannot verify");
+            return;
+        }
+    };
+    if claimed == observed {
+        // shouldn't happen — discv5 only emits UnverifiableEnr on mismatch
+        return;
+    }
+
+    let ping = discv5.with_discv5(|d| d.send_ping(enr.clone()));
+    let result = tokio::time::timeout(Duration::from_secs(5), ping).await;
+    match result {
+        Ok(Ok(pong)) => {
+            let add = discv5.with_discv5(|d| d.add_enr(enr));
+            match add {
+                Ok(()) => info!(
+                    ?node_id, observed = %observed, %claimed,
+                    pong_ip = %pong.ip, pong_port = pong.port,
+                    "(discv5) rescued unverifiable ENR — claimed address answered, re-added to routing table"
+                ),
+                Err(e) => warn!(
+                    ?node_id, error = %e,
+                    "(discv5) rescue: PING succeeded but add_enr failed"
+                ),
+            }
+        }
+        Ok(Err(e)) => {
+            debug!(
+                ?node_id, observed = %observed, %claimed, error = ?e,
+                "(discv5) rescue: claimed address did not respond"
+            );
+        }
+        Err(_) => {
+            debug!(
+                ?node_id, observed = %observed, %claimed,
+                "(discv5) rescue: PING timed out after 5s"
+            );
+        }
+    }
 }
 
 /// Install a global tracing subscriber that writes to stderr.
