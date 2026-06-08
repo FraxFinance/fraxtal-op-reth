@@ -15,6 +15,7 @@ use alloy_op_evm::{
     block::{OpAlloyReceiptBuilder, OpTxEnv, receipt_builder::OpReceiptBuilder},
     post_exec::{
         PostExecEvm, PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks, PostExecExecutorExt,
+        WarmingRefundEvent, WarmingState,
     },
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
@@ -144,12 +145,30 @@ where
 
 impl<E, R, Spec> PostExecExecutorExt for FraxtalBlockExecutor<E, R, Spec>
 where
-    E: Evm,
+    E: PostExecEvm,
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
+    fn post_exec_entries(&self) -> &[SDMGasEntry] {
+        self.inner.post_exec_entries()
+    }
+
     fn take_post_exec_entries(&mut self) -> alloc::vec::Vec<SDMGasEntry> {
         self.inner.take_post_exec_entries()
+    }
+
+    fn take_warming_events_by_tx(
+        &mut self,
+    ) -> alloc::vec::Vec<alloc::vec::Vec<WarmingRefundEvent>> {
+        self.inner.take_warming_events_by_tx()
+    }
+
+    fn warming_state(&self) -> WarmingState {
+        self.inner.warming_state()
+    }
+
+    fn seed_warming_state(&mut self, state: WarmingState) {
+        self.inner.seed_warming_state(state)
     }
 }
 
