@@ -20,12 +20,18 @@ use reth_transaction_pool::{PoolPooledTx, PoolTransaction, TransactionPool};
 use tracing::info;
 
 /// Network builder for Fraxtal nodes.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct FraxtalNetworkBuilder {
-    /// Disable transaction pool gossip.
+    /// Disable transaction pool gossip
     pub disable_txpool_gossip: bool,
-    /// Disable discovery v4.
+    /// Disable discovery v4
     pub disable_discovery_v4: bool,
+}
+
+impl Clone for FraxtalNetworkBuilder {
+    fn clone(&self) -> Self {
+        Self::new(self.disable_txpool_gossip, self.disable_discovery_v4)
+    }
 }
 
 impl FraxtalNetworkBuilder {
@@ -33,8 +39,12 @@ impl FraxtalNetworkBuilder {
     pub const fn new(disable_txpool_gossip: bool, disable_discovery_v4: bool) -> Self {
         Self { disable_txpool_gossip, disable_discovery_v4 }
     }
+}
 
-    /// Builds the [`NetworkConfig`] for the node, injecting Fraxtal bootnodes for known chains.
+impl FraxtalNetworkBuilder {
+    /// Returns the [`NetworkConfig`] that contains the settings to launch the p2p network.
+    ///
+    /// This applies the configured [`FraxtalNetworkBuilder`] settings.
     pub fn network_config<Node, NetworkP>(
         &self,
         ctx: &BuilderContext<Node>,
@@ -63,25 +73,35 @@ impl FraxtalNetworkBuilder {
             builder = builder.boot_nodes(nodes.clone());
         }
 
-        let network_builder = builder.apply(|mut builder| {
-            let rlpx_socket = (args.addr, args.port).into();
-            if disable_discovery_v4 || args.discovery.disable_discovery {
-                builder = builder.disable_discv4_discovery();
-            }
-            if !args.discovery.disable_discovery {
-                let discv5_bootnodes = args
-                    .resolved_bootnodes()
-                    .or(fraxtal_nodes)
-                    .or_else(|| ctx.chain_spec().bootnodes())
-                    .unwrap_or_default();
-                builder = builder.discovery_v5(
-                    args.discovery.discovery_v5_builder(rlpx_socket, discv5_bootnodes),
-                );
-            }
-            builder
-        });
+        let network_builder = builder
+            // apply discovery settings
+            .apply(|mut builder| {
+                let rlpx_socket = (args.addr, args.port).into();
+                if disable_discovery_v4 || args.discovery.disable_discovery {
+                    builder = builder.disable_discv4_discovery();
+                }
+                if !args.discovery.disable_discovery {
+                    builder = builder.discovery_v5(
+                        args.discovery.discovery_v5_builder(
+                            rlpx_socket,
+                            ctx.config()
+                                .network
+                                .resolved_bootnodes()
+                                .or(fraxtal_nodes)
+                                .or_else(|| ctx.chain_spec().bootnodes())
+                                .unwrap_or_default(),
+                        ),
+                    );
+                }
+
+                builder
+            });
 
         let mut network_config = ctx.build_network_config(network_builder);
+
+        // When `sequencer_endpoint` is configured, the node will forward all transactions to a
+        // Sequencer node for execution and inclusion on L1, and disable its own txpool
+        // gossip to prevent other parties in the network from learning about them.
         network_config.tx_gossip_disabled = disable_txpool_gossip;
 
         Ok(network_config)
@@ -106,7 +126,8 @@ where
         let network_config = self.network_config(ctx)?;
         let network = NetworkManager::builder(network_config).await?;
         let handle = ctx.start_network(network, pool);
-        info!(target: "reth::cli", enode = %handle.local_node_record(), "P2P networking initialized");
+        info!(target: "reth::cli", enode=%handle.local_node_record(), "P2P networking initialized");
+
         Ok(handle)
     }
 }

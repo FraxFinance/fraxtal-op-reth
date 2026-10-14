@@ -6,7 +6,7 @@ use alloy_primitives::{Address, B256, KECCAK256_EMPTY, U256, address, b256};
 use reth_chainspec::EthChainSpec;
 use revm::{
     DatabaseCommit,
-    state::{Account, Bytecode, EvmStorageSlot},
+    state::{Account, Bytecode, EvmStorageSlot, TransactionId},
 };
 use tracing::info;
 
@@ -175,7 +175,7 @@ where
         EvmStorageSlot::new_changed(
             U256::default(),
             U256::from_be_bytes(B256::left_padding_from(owner.as_slice()).into()),
-            0,
+            TransactionId::ZERO,
         ),
     );
     info!(target: "evm", "Setting proxy {} implementation to {}", proxy_source_addr, implementation_addr);
@@ -184,18 +184,26 @@ where
         EvmStorageSlot::new_changed(
             U256::default(),
             U256::from_be_bytes(B256::left_padding_from(implementation_addr.as_slice()).into()),
-            0,
+            TransactionId::ZERO,
         ),
     );
 
     info!(target: "evm", "Setting proxy {} name and symbol", proxy_source_addr);
     current_contract_revm_account.storage.insert(
         U256::from(3),
-        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(name_storage.into()), 0),
+        EvmStorageSlot::new_changed(
+            U256::default(),
+            U256::from_be_bytes(name_storage.into()),
+            TransactionId::ZERO,
+        ),
     );
     current_contract_revm_account.storage.insert(
         U256::from(4),
-        EvmStorageSlot::new_changed(U256::default(), U256::from_be_bytes(symbol_storage.into()), 0),
+        EvmStorageSlot::new_changed(
+            U256::default(),
+            U256::from_be_bytes(symbol_storage.into()),
+            TransactionId::ZERO,
+        ),
     );
 
     db.commit(HashMap::from_iter([

@@ -40,21 +40,6 @@ pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<OpChainSpec>, eyre::Error
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_known_chain_spec() {
-        for &chain in FraxtalChainSpecParser::SUPPORTED_CHAINS {
-            assert!(
-                <FraxtalChainSpecParser as ChainSpecParser>::parse(chain).is_ok(),
-                "Failed to parse {chain}"
-            );
-        }
-    }
-}
-
 /// Convenience accessors for the built-in Fraxtal chain specs.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
@@ -67,5 +52,20 @@ impl FraxtalChainSpec {
 
     pub fn hoodi() -> Arc<OpChainSpec> {
         FRAXTAL_HOODI_TESTNET.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_known_chain_spec() {
+        for &chain in FraxtalChainSpecParser::SUPPORTED_CHAINS {
+            assert!(
+                <FraxtalChainSpecParser as ChainSpecParser>::parse(chain).is_ok(),
+                "Failed to parse {chain}"
+            );
+        }
     }
 }

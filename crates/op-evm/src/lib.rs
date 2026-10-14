@@ -1,5 +1,3 @@
-extern crate alloc;
-
 pub use alloy_op_evm::{OpEvm as FraxtalEvm, OpEvmFactory as FraxtalEvmFactory};
 
 pub mod block;

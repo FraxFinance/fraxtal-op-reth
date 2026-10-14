@@ -40,6 +40,9 @@ op-alloy-rpc-types-engine.workspace = true
 alloy-op-evm.workspace = true
 alloy-evm.workspace = true
 
+# metrics
+reth-metrics = { workspace = true, optional = true }
+
 # misc
 tracing.workspace = true
 thiserror.workspace = true
@@ -47,6 +50,7 @@ thiserror.workspace = true
 [features]
 default = ["std"]
 std = [
+    "dep:reth-metrics",
     "reth-consensus/std",
     "reth-primitives-traits/std",
     "reth-revm/std",
@@ -57,7 +61,10 @@ std = [
     "reth-optimism-primitives/std",
     "reth-optimism-forks/std",
     "thiserror/std",
+    "tracing/std",
     "op-alloy-consensus/std",
     "reth-chainspec/std",
+    "alloy-op-evm/engine",
+    "alloy-op-evm/metrics",
 ]
 optimism = []

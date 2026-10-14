@@ -1,21 +1,20 @@
 //! Block executor for Fraxtal — wraps OP block executor and adds Fraxtal hardfork migrations.
 
-use alloc::boxed::Box;
-use alloy_consensus::{Transaction, TxReceipt};
+use alloy_consensus::{Transaction, TransactionEnvelope, TxReceipt};
 use alloy_eips::Encodable2718;
 use alloy_evm::{
     Database, Evm, EvmFactory, FromRecoveredTx, FromTxWithEncoded, IntoTxEnv,
     block::{
         BlockExecutionError, BlockExecutionResult, BlockExecutor, BlockExecutorFactory,
-        ExecutableTx, GasOutput, OnStateHook, StateDB,
+        CommitChanges, ExecutableTx, GasOutput, StateDB,
     },
 };
 use alloy_op_evm::{
     OpBlockExecutionCtx, OpBlockExecutor, OpBlockExecutorFactory, OpEvmFactory,
-    block::{OpAlloyReceiptBuilder, OpTxEnv, receipt_builder::OpReceiptBuilder},
+    block::{OpAlloyReceiptBuilder, OpTxEnv, OpTxResult, receipt_builder::OpReceiptBuilder},
     post_exec::{
         PostExecEvm, PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks, PostExecExecutorExt,
-        WarmingRefundEvent, WarmingState,
+        PostExecRefundEvent, PostExecRefundInspector,
     },
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
@@ -81,7 +80,7 @@ where
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
     type Evm = E;
-    type Result = <OpBlockExecutor<E, R, Spec> as BlockExecutor>::Result;
+    type Result = OpTxResult<E::HaltReason, <R::Transaction as TransactionEnvelope>::TxType>;
 
     fn apply_pre_execution_changes(&mut self) -> Result<(), BlockExecutionError> {
         self.inner.apply_pre_execution_changes()?;
@@ -109,6 +108,14 @@ where
         Ok(())
     }
 
+    fn execute_transaction_with_commit_condition(
+        &mut self,
+        tx: impl ExecutableTx<Self>,
+        f: impl FnOnce(&Self::Result) -> CommitChanges,
+    ) -> Result<Option<GasOutput>, BlockExecutionError> {
+        self.inner.execute_transaction_with_commit_condition(tx, f)
+    }
+
     fn execute_transaction_without_commit(
         &mut self,
         tx: impl ExecutableTx<Self>,
@@ -124,10 +131,6 @@ where
         self,
     ) -> Result<(Self::Evm, BlockExecutionResult<Self::Receipt>), BlockExecutionError> {
         self.inner.finish()
-    }
-
-    fn set_state_hook(&mut self, hook: Option<Box<dyn OnStateHook>>) {
-        self.inner.set_state_hook(hook);
     }
 
     fn evm_mut(&mut self) -> &mut Self::Evm {
@@ -149,26 +152,26 @@ where
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
+    type Snapshot = E::Snapshot;
+
     fn post_exec_entries(&self) -> &[SDMGasEntry] {
         self.inner.post_exec_entries()
     }
 
-    fn take_post_exec_entries(&mut self) -> alloc::vec::Vec<SDMGasEntry> {
+    fn take_post_exec_entries(&mut self) -> Vec<SDMGasEntry> {
         self.inner.take_post_exec_entries()
     }
 
-    fn take_warming_events_by_tx(
-        &mut self,
-    ) -> alloc::vec::Vec<alloc::vec::Vec<WarmingRefundEvent>> {
-        self.inner.take_warming_events_by_tx()
+    fn take_refund_events_by_tx(&mut self) -> Vec<Vec<PostExecRefundEvent>> {
+        self.inner.take_refund_events_by_tx()
     }
 
-    fn warming_state(&self) -> WarmingState {
-        self.inner.warming_state()
+    fn refund_snapshot(&self) -> Self::Snapshot {
+        self.inner.refund_snapshot()
     }
 
-    fn seed_warming_state(&mut self, state: WarmingState) {
-        self.inner.seed_warming_state(state)
+    fn seed_refund_snapshot(&mut self, state: Self::Snapshot) {
+        self.inner.seed_refund_snapshot(state);
     }
 }
 
@@ -221,7 +224,10 @@ where
     type ExecutionCtx<'a> = OpBlockExecutionCtx;
     type Transaction = R::Transaction;
     type Receipt = R::Receipt;
-    type TxExecutionResult = <OpBlockExecutorFactory<R, Spec, PostExecEvmFactoryAdapter<F>> as BlockExecutorFactory>::TxExecutionResult;
+    type TxExecutionResult = OpTxResult<
+        <PostExecEvmFactoryAdapter<F> as EvmFactory>::HaltReason,
+        <R::Transaction as TransactionEnvelope>::TxType,
+    >;
     type Executor<
         'a,
         DB: StateDB,
@@ -249,9 +255,10 @@ where
     }
 }
 
-impl<R, Spec, Tx> BlockExecutorFactory for FraxtalBlockExecutorFactory<R, Spec, OpEvmFactory<Tx>>
+impl<ReceiptBuilder, Spec, Tx, RefundPolicy> BlockExecutorFactory
+    for FraxtalBlockExecutorFactory<ReceiptBuilder, Spec, OpEvmFactory<Tx, RefundPolicy>>
 where
-    R: OpReceiptBuilder<
+    ReceiptBuilder: OpReceiptBuilder<
             Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
             Receipt: TxReceipt,
         > + 'static,
@@ -261,19 +268,30 @@ where
         + Default
         + Clone
         + core::fmt::Debug
-        + FromRecoveredTx<R::Transaction>
-        + FromTxWithEncoded<R::Transaction>
+        + FromRecoveredTx<ReceiptBuilder::Transaction>
+        + FromTxWithEncoded<ReceiptBuilder::Transaction>
         + OpTxEnv
         + 'static,
+    RefundPolicy: Default + PostExecRefundInspector + 'static,
     Self: 'static,
 {
-    type EvmFactory = OpEvmFactory<Tx>;
+    type EvmFactory = OpEvmFactory<Tx, RefundPolicy>;
     type ExecutionCtx<'a> = OpBlockExecutionCtx;
-    type Transaction = R::Transaction;
-    type Receipt = R::Receipt;
-    type TxExecutionResult = <OpBlockExecutorFactory<R, Spec, OpEvmFactory<Tx>> as BlockExecutorFactory>::TxExecutionResult;
-    type Executor<'a, DB: StateDB, I: Inspector<<OpEvmFactory<Tx> as EvmFactory>::Context<DB>>> =
-        FraxtalBlockExecutor<<OpEvmFactory<Tx> as EvmFactory>::Evm<DB, I>, &'a R, &'a Spec>;
+    type Transaction = ReceiptBuilder::Transaction;
+    type Receipt = ReceiptBuilder::Receipt;
+    type TxExecutionResult = OpTxResult<
+        <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::HaltReason,
+        <ReceiptBuilder::Transaction as TransactionEnvelope>::TxType,
+    >;
+    type Executor<
+        'a,
+        DB: StateDB,
+        I: Inspector<<OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Context<DB>>,
+    > = FraxtalBlockExecutor<
+        <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Evm<DB, I>,
+        &'a ReceiptBuilder,
+        &'a Spec,
+    >;
 
     fn evm_factory(&self) -> &Self::EvmFactory {
         self.inner.evm_factory()
@@ -281,12 +299,12 @@ where
 
     fn create_executor<'a, DB, I>(
         &'a self,
-        evm: <OpEvmFactory<Tx> as EvmFactory>::Evm<DB, I>,
+        evm: <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Evm<DB, I>,
         ctx: Self::ExecutionCtx<'a>,
     ) -> Self::Executor<'a, DB, I>
     where
         DB: StateDB,
-        I: Inspector<<OpEvmFactory<Tx> as EvmFactory>::Context<DB>>,
+        I: Inspector<<OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Context<DB>>,
     {
         FraxtalBlockExecutor::new(evm, ctx, self.inner.spec(), self.inner.receipt_builder())
     }

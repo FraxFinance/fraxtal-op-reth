@@ -20,10 +20,11 @@ use reth_optimism_node::{
         OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNodeTypes, OpPayloadBuilder,
         OpPoolBuilder,
     },
+    txpool::interop::InteropFailsafe,
 };
 use reth_optimism_payload_builder::{
     OpPayloadAttrs,
-    config::{OpDAConfig, OpGasLimitConfig},
+    config::{OpBuilderConfig, OpDAConfig, OpGasLimitConfig, OperatorSdmOptIn},
 };
 use reth_optimism_primitives::OpPrimitives;
 use reth_optimism_rpc::eth::OpEthApiBuilder;
@@ -61,6 +62,7 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
                 .is_cancun_active_at_timestamp(timestamp)
                 .then(alloy_primitives::B256::random),
             slot_number: None,
+            target_gas_limit: None,
         };
 
         /// Dummy system transaction for dev mode.
@@ -96,7 +98,7 @@ impl PayloadAttributesBuilder<OpPayloadAttrs> for OpLocalPayloadAttributesBuilde
 }
 
 /// Type configuration for a regular Optimism node.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct FraxtalNode {
     /// Additional Optimism args
@@ -112,6 +114,12 @@ pub struct FraxtalNode {
     /// Used to control the gas limit of the blocks produced by the OP builder.(configured by the
     /// batcher via the `miner_` api)
     pub gas_limit_config: OpGasLimitConfig,
+    /// Local operator opt-in for SDM `PostExec` production. Shared (via Arc clones) between the
+    /// payload builder and the `admin_setOperatorSdmOptIn` RPC handler.
+    pub operator_sdm_opt_in: OperatorSdmOptIn,
+    /// Interop failsafe gate, shared between the txpool's interop filter client (writer) and the
+    /// payload builder (reader, to exclude interop txs while it is active).
+    pub interop_failsafe: InteropFailsafe,
 }
 
 /// A [`ComponentsBuilder`] with its generic arguments set to a stack of Optimism specific builders.
@@ -124,13 +132,22 @@ pub type FraxtalNodeComponentBuilder<Node, Payload = OpPayloadBuilder> = Compone
     OpConsensusBuilder,
 >;
 
+impl Default for FraxtalNode {
+    fn default() -> Self {
+        Self::new(RollupArgs::default())
+    }
+}
+
 impl FraxtalNode {
     /// Creates a new instance of the Optimism node type.
     pub fn new(args: RollupArgs) -> Self {
+        let operator_sdm_opt_in = OperatorSdmOptIn::configured(args.operator_sdm_opt_in);
         Self {
             args,
             da_config: OpDAConfig::default(),
             gas_limit_config: OpGasLimitConfig::default(),
+            operator_sdm_opt_in,
+            interop_failsafe: InteropFailsafe::default(),
         }
     }
 
@@ -146,26 +163,63 @@ impl FraxtalNode {
         self
     }
 
+    /// The [`OpBuilderConfig`] this node's payload builder is configured with.
+    ///
+    /// This is the single assembly site for the payload builder's config: [`components`] and any
+    /// downstream node that replaces the payload component consume it wholesale, so they stay in
+    /// lockstep as [`OpBuilderConfig`] gains fields. Because [`OpBuilderConfig`] is not
+    /// `#[non_exhaustive]`, adding a field forces a compile error here until it is threaded
+    /// through.
+    ///
+    /// [`components`]: FraxtalNode::components
+    pub fn builder_config(&self) -> OpBuilderConfig {
+        OpBuilderConfig {
+            da_config: self.da_config.clone(),
+            gas_limit_config: self.gas_limit_config.clone(),
+            operator_sdm_opt_in: self.operator_sdm_opt_in.clone(),
+            interop_failsafe: self.interop_failsafe.clone(),
+            max_uncompressed_block_size: self.args.max_uncompressed_block_size,
+        }
+    }
+
+    /// The pool builder configured the way every OP node's pool expects: tx-conditional support,
+    /// interop endpoints and quorum, and the shared interop failsafe gate.
+    ///
+    /// Generic over the pooled-transaction type so a downstream node can start from this base and
+    /// chain [`with_ordering`](OpPoolBuilder::with_ordering) /
+    /// [`with_validator_wrapper`](OpPoolBuilder::with_validator_wrapper) to swap in a custom `T`,
+    /// ordering, or validator wrapper.
+    pub fn standard_pool_builder<T>(&self) -> OpPoolBuilder<T> {
+        OpPoolBuilder::<T>::default()
+            .with_enable_tx_conditional(self.args.enable_tx_conditional)
+            .with_interop(
+                self.args.interop_http.clone(),
+                self.args.interop_min_responses,
+                self.args.interop_safety_level,
+            )
+            .with_interop_failsafe(self.interop_failsafe.clone())
+    }
+
+    /// Returns the payload builder stock components install.
+    ///
+    /// Exposed so a wrapper node that replaces only the payload *service* still builds payloads
+    /// from the same configured builder.
+    pub fn payload_builder(&self) -> OpPayloadBuilder {
+        OpPayloadBuilder::new(self.args.compute_pending_block)
+            .with_builder_config(self.builder_config())
+    }
+
     /// Returns the components for the given [`RollupArgs`].
     pub fn components<Node>(&self) -> FraxtalNodeComponentBuilder<Node>
     where
         Node: FullNodeTypes<Types: OpNodeTypes>,
     {
-        let RollupArgs { disable_txpool_gossip, compute_pending_block, discovery_v4, .. } =
-            self.args;
+        let RollupArgs { disable_txpool_gossip, discovery_v4, .. } = self.args;
         ComponentsBuilder::default()
             .node_types::<Node>()
             .executor(FraxtalExecutorBuilder::default())
-            .pool(
-                OpPoolBuilder::default()
-                    .with_enable_tx_conditional(self.args.enable_tx_conditional)
-                    .with_interop(self.args.interop_http.clone(), self.args.interop_safety_level),
-            )
-            .payload(BasicPayloadServiceBuilder::new(
-                OpPayloadBuilder::new(compute_pending_block)
-                    .with_da_config(self.da_config.clone())
-                    .with_gas_limit_config(self.gas_limit_config.clone()),
-            ))
+            .pool(self.standard_pool_builder())
+            .payload(BasicPayloadServiceBuilder::new(self.payload_builder()))
             .network(FraxtalNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
             .consensus(OpConsensusBuilder::default())
     }
@@ -177,11 +231,13 @@ impl FraxtalNode {
             .with_sequencer_headers(self.args.sequencer_headers.clone())
             .with_da_config(self.da_config.clone())
             .with_gas_limit_config(self.gas_limit_config.clone())
+            .with_operator_sdm_opt_in(self.operator_sdm_opt_in.clone())
             .with_enable_tx_conditional(self.args.enable_tx_conditional)
             .with_min_suggested_priority_fee(self.args.min_suggested_priority_fee)
             .with_historical_rpc(self.args.historical_rpc.clone())
             .with_flashblocks(self.args.flashblocks_url.clone())
             .with_flashblock_consensus(self.args.flashblock_consensus)
+            .with_retain_forwarded_txs(self.args.retain_forwarded_txs)
     }
 
     /// Instantiates the [`ProviderFactoryBuilder`] for an opstack node.
@@ -192,12 +248,12 @@ impl FraxtalNode {
     /// [`ReadOnlyConfig`](reth_provider::providers::ReadOnlyConfig).
     ///
     /// ```no_run
-    /// use reth_optimism_chainspec::BASE_MAINNET;
+    /// use reth_optimism_chainspec::OP_MAINNET;
     /// use reth_optimism_node::OpNode;
     ///
     /// fn demo(runtime: reth_tasks::Runtime) {
     ///     let factory = OpNode::provider_factory_builder()
-    ///         .open_read_only(BASE_MAINNET.clone(), "datadir", runtime)
+    ///         .open_read_only(OP_MAINNET.clone(), "datadir", runtime)
     ///         .unwrap();
     /// }
     /// ```
@@ -212,7 +268,7 @@ impl FraxtalNode {
     /// fn demo(runtime: reth_tasks::Runtime) {
     ///     let factory = OpNode::provider_factory_builder()
     ///         .open_read_only(
-    ///             OpChainSpecBuilder::base_mainnet().build().into(),
+    ///             OpChainSpecBuilder::optimism_mainnet().build().into(),
     ///             ReadOnlyConfig::from_datadir("datadir").no_watch(),
     ///             runtime,
     ///         )
@@ -281,7 +337,7 @@ impl NodeTypes for FraxtalNode {
 /// A regular optimism evm and executor builder.
 #[derive(Debug, Copy, Clone, Default)]
 #[non_exhaustive]
-pub struct FraxtalExecutorBuilder;
+pub struct FraxtalExecutorBuilder {}
 
 impl<Node> ExecutorBuilder<Node> for FraxtalExecutorBuilder
 where
@@ -293,8 +349,6 @@ where
     >;
 
     async fn build_evm(self, ctx: &BuilderContext<Node>) -> eyre::Result<Self::EVM> {
-        let evm_config = FraxtalEvmConfig::new(ctx.chain_spec(), OpRethReceiptBuilder::default());
-
-        Ok(evm_config)
+        Ok(FraxtalEvmConfig::new(ctx.chain_spec(), OpRethReceiptBuilder::default()))
     }
 }

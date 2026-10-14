@@ -6,7 +6,7 @@ use alloy_primitives::{B256, KECCAK256_EMPTY, U256};
 use reth_chainspec::EthChainSpec;
 use revm::{
     DatabaseCommit,
-    state::{Account, Bytecode, EvmStorageSlot},
+    state::{Account, Bytecode, EvmStorageSlot, TransactionId},
 };
 use tracing::info;
 
@@ -63,7 +63,7 @@ where
                     U256::from_be_bytes(
                         B256::left_padding_from(constants::PROXY_ADMIN_ADDR.as_slice()).into(),
                     ),
-                    0,
+                    TransactionId::ZERO,
                 ),
             );
             info!(target: "evm", "Setting proxy {} implementation to {}", constants::PROXY_ADDR, implementation_addr);
@@ -74,7 +74,7 @@ where
                     U256::from_be_bytes(
                         B256::left_padding_from(implementation_addr.as_slice()).into(),
                     ),
-                    0,
+                    TransactionId::ZERO,
                 ),
             );
 
