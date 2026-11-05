@@ -50,6 +50,9 @@ op-alloy-consensus.workspace = true
 op-alloy-rpc-types-engine.workspace = true
 reth-primitives-traits.workspace = true
 
+[dev-dependencies]
+reth-trie.workspace = true
+
 [features]
 default = ["optimism"]
 optimism = []
