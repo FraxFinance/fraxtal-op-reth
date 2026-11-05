@@ -2,7 +2,7 @@
 // The `optimism` feature must be enabled to use this crate.
 
 use fraxtal_chainspec::FraxtalChainSpecParser;
-use fraxtal_node::proof_history::launch_node;
+use fraxtal_node::{node::FraxtalNode, proof_history::launch_node};
 use reth_optimism_cli::Cli;
 use reth_optimism_node::args::RollupArgs;
 use tracing::info;
@@ -24,7 +24,7 @@ fn main() {
     if let Err(err) = Cli::<FraxtalChainSpecParser, RollupArgs>::parse_with_denied_args().run(
         async move |builder, rollup_args| {
             info!(target: "reth::cli", "Launching node");
-            launch_node(builder, rollup_args).await
+            launch_node(builder, FraxtalNode::new(rollup_args)).await
         },
     ) {
         eprintln!("Error: {err:?}");

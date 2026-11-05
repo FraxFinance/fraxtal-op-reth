@@ -45,8 +45,6 @@ where
         + 'static,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
-    type Snapshot = ();
-
     fn post_exec_executor_for_block<'a, DB: Database>(
         &'a self,
         db: &'a mut State<DB>,
@@ -56,7 +54,7 @@ where
         impl BlockExecutor<
             Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
             Receipt = <Self::Primitives as NodePrimitives>::Receipt,
-        > + PostExecExecutorExt<Snapshot = Self::Snapshot>
+        > + PostExecExecutorExt
         + 'a,
         Self::Error,
     > {
@@ -80,7 +78,7 @@ where
     ) -> Result<
         impl BlockBuilder<
             Primitives = Self::Primitives,
-            Executor: PostExecExecutorExt<Snapshot = Self::Snapshot>
+            Executor: PostExecExecutorExt
                           + BlockExecutor<
                 Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
                 Result: PreRefundGasUsed,
@@ -151,8 +149,6 @@ where
         + 'static,
     Self: Send + Sync + Unpin + Clone + 'static,
 {
-    type Snapshot = F::Snapshot;
-
     fn post_exec_executor_for_block<'a, DB: Database>(
         &'a self,
         db: &'a mut State<DB>,
@@ -162,7 +158,7 @@ where
         impl BlockExecutor<
             Transaction = <Self::Primitives as NodePrimitives>::SignedTx,
             Receipt = <Self::Primitives as NodePrimitives>::Receipt,
-        > + PostExecExecutorExt<Snapshot = Self::Snapshot>
+        > + PostExecExecutorExt
         + 'a,
         Self::Error,
     > {
@@ -186,7 +182,7 @@ where
     ) -> Result<
         impl BlockBuilder<
             Primitives = Self::Primitives,
-            Executor: PostExecExecutorExt<Snapshot = Self::Snapshot>
+            Executor: PostExecExecutorExt
                           + BlockExecutor<
                 Evm: alloy_evm::Evm<DB: core::ops::DerefMut<Target = State<DB>>>,
                 Result: PreRefundGasUsed,

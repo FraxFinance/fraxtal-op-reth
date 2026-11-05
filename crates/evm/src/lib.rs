@@ -1,6 +1,6 @@
 extern crate alloc;
 
-use alloc::sync::Arc;
+use alloc::{string::ToString, sync::Arc};
 use alloy_consensus::{BlockHeader, Header};
 use alloy_evm::{EvmFactory, FromRecoveredTx, FromTxWithEncoded, block::BlockExecutorFactory};
 use alloy_op_evm::{
@@ -11,7 +11,7 @@ use alloy_op_evm::{
 use core::fmt::Debug;
 use fraxtal_op_evm::{FraxtalBlockExecutorFactory, FraxtalEvmFactory};
 use op_alloy_consensus::{
-    EIP1559ParamError, OpTransaction as OpConsensusTransaction,
+    EIP1559ParamError, OpTransaction as OpConsensusTransaction, PostExecPayloadValidationError,
     parse_post_exec_payload_from_transactions, validate_post_exec_entry_count,
 };
 use op_revm::OpSpecId;
@@ -20,7 +20,7 @@ use reth_evm::{ConfigureEvm, EvmEnv, eth::NextEvmEnvAttributes, precompiles::Pre
 use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::{
     NullRefundPolicy, OpBlockAssembler, OpNextBlockEnvAttributes, OpRethReceiptBuilder,
-    PostExecMode,
+    PostExecMode, report_post_exec_validation_failure,
 };
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_primitives::{DepositReceipt, OpPrimitives};
@@ -90,6 +90,7 @@ impl<ChainSpec, N: NodePrimitives, R, EvmFactory> FraxtalEvmConfig<ChainSpec, N,
         receipt_builder: R,
         evm_factory: EvmFactory,
     ) -> Self {
+        sdm_metrics::register_sdm_metrics_at_zero();
         Self {
             block_assembler: OpBlockAssembler::new(chain_spec.clone()),
             executor_factory: FraxtalBlockExecutorFactory::new(
@@ -130,17 +131,33 @@ fn post_exec_mode_from_transactions<'a, I, T>(
     transactions: I,
     block_number: u64,
     sdm_active: bool,
-) -> Result<PostExecMode, EIP1559ParamError>
+) -> PostExecMode
 where
     I: IntoIterator<Item = &'a T>,
     T: OpConsensusTransaction + 'a,
 {
-    parse_post_exec_payload_from_transactions(transactions, block_number, sdm_active)
-        .inspect_err(|error| sdm_metrics::report_post_exec_validation_failure(block_number, *error))
-        .map_err(|_| EIP1559ParamError::InvalidPostExecPayload)
-        .map(|parsed| {
-            parsed.map_or_else(PostExecMode::default, |parsed| PostExecMode::Verify(parsed.payload))
-        })
+    match parse_post_exec_payload_from_transactions(transactions, block_number, sdm_active) {
+        Ok(parsed) => parsed
+            .inspect(|_| sdm_metrics::report_post_exec_validation_ok())
+            .map_or_else(PostExecMode::default, |parsed| PostExecMode::Verify(parsed.payload)),
+        Err(error) => {
+            report_post_exec_validation_failure(block_number, error);
+            PostExecMode::Invalid(error.to_string())
+        }
+    }
+}
+
+/// Runs the encoded-transaction preflight for an Engine API payload; a rejection is counted
+/// under its failed rule before the parse ever runs, so the preflight's reasons reach the same
+/// counters as the parse path's.
+#[cfg(feature = "std")]
+pub(crate) fn preflight_post_exec_payload(
+    transactions: &[Bytes],
+    block_number: u64,
+) -> Result<(), PostExecPayloadValidationError> {
+    validate_post_exec_entry_count(transactions).inspect_err(|error| {
+        report_post_exec_validation_failure(block_number, *error);
+    })
 }
 
 impl<ChainSpec, N, R, EvmFactory> FraxtalEvmConfig<ChainSpec, N, R, EvmFactory>
@@ -196,7 +213,7 @@ where
     }
 }
 
-/// UPSTREAM-MIRROR(copy): reth@rev:0fbe428 `reth_evm_ethereum::EthEvmConfig`
+/// UPSTREAM-MIRROR(copy): reth@rev:8d359d0 `reth_evm_ethereum::EthEvmConfig`
 ///
 /// Mirrors upstream `ConfigureEvm` plumbing with OP environments and execution context.
 impl<ChainSpec, N, R, EvmF> ConfigureEvm for FraxtalEvmConfig<ChainSpec, N, R, EvmF>
@@ -278,7 +295,7 @@ where
             block.body().transactions(),
             block.header().number(),
             self.is_sdm_active_at_timestamp(block.header().timestamp()),
-        )?;
+        );
 
         Ok(self.context_for_block_with_post_exec_mode(block, Some(post_exec_mode)))
     }
@@ -296,7 +313,7 @@ where
     }
 }
 
-/// UPSTREAM-MIRROR(copy): reth@rev:0fbe428 `reth_evm_ethereum::EthEvmConfig`
+/// UPSTREAM-MIRROR(copy): reth@rev:8d359d0 `reth_evm_ethereum::EthEvmConfig`
 ///
 /// Mirrors upstream payload-to-EVM configuration with OP payload and fork semantics.
 /// `tx_iterator_for_payload` recovers senders directly; upstream routes the same recovery through
@@ -336,27 +353,31 @@ where
         &self,
         payload: &'a OpExecutionData,
     ) -> Result<ExecutionCtxFor<'a, Self>, Self::Error> {
-        validate_post_exec_entry_count(payload.payload.transactions())
-            .map_err(|_| EIP1559ParamError::InvalidPostExecPayload)?;
-        let transactions = payload
-            .payload
-            .transactions()
-            .iter()
-            .map(|encoded| TxTy::<Self::Primitives>::decode_2718_exact(encoded.as_ref()))
-            .collect::<Result<Vec<_>, _>>()
-            .inspect_err(|error| {
-                tracing::warn!(
-                    block_number = payload.payload.block_number(),
-                    %error,
-                    "payload rejected: transaction failed to decode"
-                );
+        let block_number = payload.payload.block_number();
+        let post_exec_mode = preflight_post_exec_payload(payload.payload.transactions(), block_number)
+            .map_err(|error| error.to_string())
+            .and_then(|()| {
+                payload
+                    .payload
+                    .transactions()
+                    .iter()
+                    .map(|encoded| TxTy::<Self::Primitives>::decode_2718_exact(encoded.as_ref()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|error| {
+                        tracing::warn!(block_number, %error, "payload rejected: transaction failed to decode");
+                        // Defensive: the engine's payload-to-block conversion normally reports
+                        // decoding failures first. Use Invalid to retain validation classification
+                        // here even for non-PostExec transactions; the reason identifies the source.
+                        format!("transaction envelope decoding failed: {error}")
+                    })
             })
-            .map_err(|_| EIP1559ParamError::InvalidPostExecPayload)?;
-        let post_exec_mode = post_exec_mode_from_transactions(
-            transactions.iter(),
-            payload.payload.block_number(),
-            self.is_sdm_active_at_timestamp(payload.payload.timestamp()),
-        )?;
+            .map_or_else(PostExecMode::Invalid, |transactions| {
+                post_exec_mode_from_transactions(
+                    transactions.iter(),
+                    block_number,
+                    self.is_sdm_active_at_timestamp(payload.payload.timestamp()),
+                )
+            });
 
         Ok(OpBlockExecutionCtx {
             parent_hash: payload.payload.parent_hash(),
@@ -373,10 +394,13 @@ where
         &self,
         payload: &OpExecutionData,
     ) -> Result<impl ExecutableTxIterator<Self>, Self::Error> {
-        validate_post_exec_entry_count(payload.payload.transactions())
-            .map_err(|_| EIP1559ParamError::InvalidPostExecPayload)?;
+        // Background conversion can start before context_for_payload runs. Keep the raw
+        // entry-count guard here too, but defer errors to iterator items so the execution
+        // context can reject the block with PostExecMode::Invalid.
+        let preflight = validate_post_exec_entry_count(payload.payload.transactions());
         let transactions = payload.payload.transactions().clone();
-        let convert = |encoded: Bytes| {
+        let convert = move |encoded: Bytes| {
+            preflight.map_err(AnyError::new)?;
             let tx = TxTy::<Self::Primitives>::decode_2718_exact(encoded.as_ref())
                 .map_err(AnyError::new)?;
             let signer = tx.try_recover().map_err(AnyError::new)?;

@@ -14,7 +14,8 @@ use reth_optimism_chainspec::OpChainSpec;
 use reth_optimism_evm::OpRethReceiptBuilder;
 use reth_optimism_forks::OpHardforks;
 use reth_optimism_node::{
-    OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes, OpFullNodeTypes, OpStorage,
+    DerivedPayloadServiceBuilder, OpAddOnsBuilder, OpEngineApiBuilder, OpEngineTypes,
+    OpFullNodeTypes, OpStorage,
     args::RollupArgs,
     node::{
         OpAddOns, OpConsensusBuilder, OpEngineValidatorBuilder, OpNodeTypes, OpPayloadBuilder,
@@ -122,11 +123,19 @@ pub struct FraxtalNode {
     pub interop_failsafe: InteropFailsafe,
 }
 
-/// A [`ComponentsBuilder`] with its generic arguments set to a stack of Optimism specific builders.
-pub type FraxtalNodeComponentBuilder<Node, Payload = OpPayloadBuilder> = ComponentsBuilder<
+/// The component builder used by the stock node configuration.
+///
+/// A payload service builder that replaces the default must be wrapped in
+/// [`DerivedPayloadServiceBuilder`].
+pub type FraxtalNodeComponentBuilder<
+    Node,
+    PayloadServiceBuilder = DerivedPayloadServiceBuilder<
+        BasicPayloadServiceBuilder<OpPayloadBuilder>,
+    >,
+> = ComponentsBuilder<
     Node,
     OpPoolBuilder,
-    BasicPayloadServiceBuilder<Payload>,
+    PayloadServiceBuilder,
     FraxtalNetworkBuilder,
     FraxtalExecutorBuilder,
     OpConsensusBuilder,
@@ -203,13 +212,20 @@ impl FraxtalNode {
     /// Returns the payload builder stock components install.
     ///
     /// Exposed so a wrapper node that replaces only the payload *service* still builds payloads
-    /// from the same configured builder.
+    /// from the same configured builder. That payload service must be wrapped in
+    /// [`DerivedPayloadServiceBuilder`].
     pub fn payload_builder(&self) -> OpPayloadBuilder {
         OpPayloadBuilder::new(self.args.compute_pending_block)
             .with_builder_config(self.builder_config())
     }
 
     /// Returns the components for the given [`RollupArgs`].
+    ///
+    /// The payload service is wrapped in [`DerivedPayloadServiceBuilder`], which a node that
+    /// assembles its own components must keep. Unlike upstream, the inner service is the plain
+    /// [`BasicPayloadServiceBuilder`]: upstream's `OpPayloadServiceBuilder` swaps in a stock
+    /// `OpEvmConfig` for `--testing.sdm-fixed-policy`, which would skip the Fraxtal migrations, so
+    /// [`launch_node`](crate::proof_history::launch_node) rejects that flag instead.
     pub fn components<Node>(&self) -> FraxtalNodeComponentBuilder<Node>
     where
         Node: FullNodeTypes<Types: OpNodeTypes>,
@@ -219,7 +235,9 @@ impl FraxtalNode {
             .node_types::<Node>()
             .executor(FraxtalExecutorBuilder::default())
             .pool(self.standard_pool_builder())
-            .payload(BasicPayloadServiceBuilder::new(self.payload_builder()))
+            .payload(DerivedPayloadServiceBuilder::new(BasicPayloadServiceBuilder::new(
+                self.payload_builder(),
+            )))
             .network(FraxtalNetworkBuilder::new(disable_txpool_gossip, !discovery_v4))
             .consensus(OpConsensusBuilder::default())
     }
@@ -284,14 +302,7 @@ impl<N> Node<N> for FraxtalNode
 where
     N: FullNodeTypes<Types: OpFullNodeTypes + OpNodeTypes>,
 {
-    type ComponentsBuilder = ComponentsBuilder<
-        N,
-        OpPoolBuilder,
-        BasicPayloadServiceBuilder<OpPayloadBuilder>,
-        FraxtalNetworkBuilder,
-        FraxtalExecutorBuilder,
-        OpConsensusBuilder,
-    >;
+    type ComponentsBuilder = FraxtalNodeComponentBuilder<N>;
 
     type AddOns = OpAddOns<
         NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,

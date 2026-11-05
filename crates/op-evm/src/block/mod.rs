@@ -14,7 +14,7 @@ use alloy_op_evm::{
     block::{OpAlloyReceiptBuilder, OpTxEnv, OpTxResult, receipt_builder::OpReceiptBuilder},
     post_exec::{
         PostExecEvm, PostExecEvmFactoryAdapter, PostExecEvmFactoryHooks, PostExecExecutorExt,
-        PostExecRefundEvent, PostExecRefundInspector,
+        PostExecRefundEvent, PostExecRefundPolicyFactory,
     },
 };
 use alloy_op_hardforks::{OpChainHardforks, OpHardforks};
@@ -152,8 +152,6 @@ where
     R: OpReceiptBuilder,
     Spec: OpHardforks + Clone,
 {
-    type Snapshot = E::Snapshot;
-
     fn post_exec_entries(&self) -> &[SDMGasEntry] {
         self.inner.post_exec_entries()
     }
@@ -166,12 +164,8 @@ where
         self.inner.take_refund_events_by_tx()
     }
 
-    fn refund_snapshot(&self) -> Self::Snapshot {
-        self.inner.refund_snapshot()
-    }
-
-    fn seed_refund_snapshot(&mut self, state: Self::Snapshot) {
-        self.inner.seed_refund_snapshot(state);
+    fn resume_at_tx_index(&mut self, first_tx_index: u64) -> Result<(), BlockExecutionError> {
+        self.inner.resume_at_tx_index(first_tx_index)
     }
 }
 
@@ -255,8 +249,8 @@ where
     }
 }
 
-impl<ReceiptBuilder, Spec, Tx, RefundPolicy> BlockExecutorFactory
-    for FraxtalBlockExecutorFactory<ReceiptBuilder, Spec, OpEvmFactory<Tx, RefundPolicy>>
+impl<ReceiptBuilder, Spec, Tx, RefundPolicyFactory> BlockExecutorFactory
+    for FraxtalBlockExecutorFactory<ReceiptBuilder, Spec, OpEvmFactory<Tx, RefundPolicyFactory>>
 where
     ReceiptBuilder: OpReceiptBuilder<
             Transaction: Transaction + Encodable2718 + OpConsensusTransaction,
@@ -272,26 +266,24 @@ where
         + FromTxWithEncoded<ReceiptBuilder::Transaction>
         + OpTxEnv
         + 'static,
-    RefundPolicy: Default + PostExecRefundInspector + 'static,
+    RefundPolicyFactory: PostExecRefundPolicyFactory + 'static,
+    RefundPolicyFactory::Policy: 'static,
     Self: 'static,
 {
-    type EvmFactory = OpEvmFactory<Tx, RefundPolicy>;
+    type EvmFactory = OpEvmFactory<Tx, RefundPolicyFactory>;
     type ExecutionCtx<'a> = OpBlockExecutionCtx;
     type Transaction = ReceiptBuilder::Transaction;
     type Receipt = ReceiptBuilder::Receipt;
     type TxExecutionResult = OpTxResult<
-        <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::HaltReason,
+        <Self::EvmFactory as EvmFactory>::HaltReason,
         <ReceiptBuilder::Transaction as TransactionEnvelope>::TxType,
     >;
-    type Executor<
-        'a,
-        DB: StateDB,
-        I: Inspector<<OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Context<DB>>,
-    > = FraxtalBlockExecutor<
-        <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Evm<DB, I>,
-        &'a ReceiptBuilder,
-        &'a Spec,
-    >;
+    type Executor<'a, DB: StateDB, I: Inspector<<Self::EvmFactory as EvmFactory>::Context<DB>>> =
+        FraxtalBlockExecutor<
+            <Self::EvmFactory as EvmFactory>::Evm<DB, I>,
+            &'a ReceiptBuilder,
+            &'a Spec,
+        >;
 
     fn evm_factory(&self) -> &Self::EvmFactory {
         self.inner.evm_factory()
@@ -299,12 +291,12 @@ where
 
     fn create_executor<'a, DB, I>(
         &'a self,
-        evm: <OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Evm<DB, I>,
+        evm: <Self::EvmFactory as EvmFactory>::Evm<DB, I>,
         ctx: Self::ExecutionCtx<'a>,
     ) -> Self::Executor<'a, DB, I>
     where
         DB: StateDB,
-        I: Inspector<<OpEvmFactory<Tx, RefundPolicy> as EvmFactory>::Context<DB>>,
+        I: Inspector<<Self::EvmFactory as EvmFactory>::Context<DB>>,
     {
         FraxtalBlockExecutor::new(evm, ctx, self.inner.spec(), self.inner.receipt_builder())
     }
